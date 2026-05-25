@@ -223,7 +223,37 @@ python scripts/trajectory_optimize.py --direction hover2forward
 
 # Custom settings
 python scripts/trajectory_optimize.py --num-nodes 200 --tf-guess 15
+
+# Two-stage solve: coarse (N=20) then fine (warm-started)
+python scripts/trajectory_optimize.py --direction forward2hover --two-stage
+
+# L-BFGS Hessian with monotone barrier strategy
+python scripts/trajectory_optimize.py --direction forward2hover --hessian limited-memory --mu-strategy monotone
+
+# Higher-order collocation (d=2)
+python scripts/trajectory_optimize.py --direction forward2hover --collocation-degree 2
 ```
+
+### CLI Arguments
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--direction` | `forward2hover` | Transition direction |
+| `--num-nodes` | `100` | Number of mesh nodes |
+| `--tf-guess` | `10.0` | Initial guess for transition time (seconds) |
+| `--ipopt-max-iter` | `3000` | IPOPT maximum iterations |
+| `--two-stage` | off | Two-stage solve: coarse → fine (warm-started) |
+| `--mu-strategy` | `adaptive` | IPOPT barrier update strategy (`adaptive` or `monotone`) |
+| `--hessian` | `exact` | Hessian approximation (`exact` or `limited-memory`) |
+| `--collocation-degree` | `1` | Radau collocation degree (1, 2, or 3) |
+
+### Output
+
+Results are saved to `results/trajopt/` as:
+- `.npz` file with time, state, control, cost, and solve time
+- State trajectory plot (V-θ phase portrait + time histories)
+- Control input plot (throttle, elevator rates)
+- Angle of attack plot
 
 ## Troubleshooting
 

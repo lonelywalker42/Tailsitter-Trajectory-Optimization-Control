@@ -44,6 +44,12 @@ python scripts/trim.py corridor --v-step 2 --theta-step 10 --linearize
 # Trajectory optimization
 python scripts/trajectory_optimize.py --direction hover2forward
 
+# Trajectory optimization with two-stage solve
+python scripts/trajectory_optimize.py --direction forward2hover --two-stage
+
+# Trajectory optimization with L-BFGS Hessian and monotone barrier
+python scripts/trajectory_optimize.py --direction forward2hover --hessian limited-memory --mu-strategy monotone
+
 # Run tests
 python -m pytest tests/ -v
 
@@ -146,7 +152,8 @@ TailsitterControl/
     ├── test_env.py
     ├── test_normalization.py
     ├── test_reward.py
-    └── test_trim.py
+    ├── test_trim.py
+    └── test_trajectory_optimization.py
 ```
 
 ### Core Modules (`src/tailsitter/`)

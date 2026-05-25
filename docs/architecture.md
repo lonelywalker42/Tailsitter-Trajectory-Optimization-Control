@@ -193,9 +193,11 @@ The trajectory optimization module (`trajectory_optimization.py`) finds optimal 
 ### Design
 
 - **Solver**: CasADi `nlpsol` with IPOPT backend
-- **Collocation**: Backward Euler (d=1 Radau) — reliable convergence for non-smooth aero tables
+- **Collocation**: Configurable Radau degree (d=1 backward Euler, d=2, d=3); default d=1 for reliable convergence
 - **Dynamics**: 11D state (8 plant + 3 augmented controls), 3D control (rates), matching MATLAB `LonDyn.m` cfg1 tables
+- **Aero model**: CL/CD with elevator increments (`dcL(-de)`, `dcD(-de)`), elevator sign inversion matching MATLAB
 - **Objective**: `min(tf + ∫ L(x,u) dt)` with weights matching MATLAB `UAVContinuous.m`
+- **Two-stage solve**: Coarse mesh (N=20) → warm-started fine mesh via `solve_from_guess()` and `resample_solution()`
 
 ### State Vector (11D)
 
@@ -215,19 +217,31 @@ The trajectory optimization module (`trajectory_optimization.py`) finds optimal 
 
 ### Collocation
 
-Backward Euler (Radau degree 1) is used because higher-degree collocation (d=2, d=3) does not converge with the non-smooth piecewise-linear aerodynamic interpolants. The collocation coefficient matrices satisfy:
+Configurable Radau collocation degree (default d=1). For d=1 (backward Euler), the coefficient matrices are:
 
 - `C = [[-1, -1], [1, 1]]` — derivative at collocation points
 - `D = [0, 1]` — continuity (endpoint property of Radau)
 - `B = [0.5, 0.5]` — quadrature weights
 
-### Current Limitations
+Higher degrees (d=2, d=3) use more internal collocation points per interval for better accuracy, but may require L-BFGS Hessian approximation for convergence.
 
-- IPOPT does not converge (dual infeasibility oscillation)
-- Elevator sign fix and CL/CD increments disabled for convergence
-- Only backward Euler (d=1) converges; higher accuracy requires better initial guesses
+### IPOPT Tuning
 
-See `docs/trajectory_optimization_plan.md` for the convergence improvement plan.
+Configurable via `TrajectoryOptConfig`:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `ipopt_mu_strategy` | `'adaptive'` | Barrier update: `'adaptive'` or `'monotone'` |
+| `ipopt_hessian_approximation` | `'exact'` | `'exact'` or `'limited-memory'` (L-BFGS) |
+| `ipopt_warm_start` | `False` | Enable warm-start from previous solution |
+
+### Convergence Strategy
+
+The optimizer uses several techniques to improve IPOPT convergence:
+
+1. **S-curve initial guess**: Cubic Hermite interpolation for theta, parabolic pitch rate, clamped throttle ramp
+2. **Relaxed us bounds**: `[-0.01, 0.01]` instead of `[0, 0]` to reduce tight-bound equality constraints
+3. **Two-stage solve**: Coarse mesh (N=20, 500 iter) → fine mesh warm-started via `resample_solution()`
 
 ## Trim Analysis
 
