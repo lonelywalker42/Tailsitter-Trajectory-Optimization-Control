@@ -18,6 +18,7 @@ sys.path.insert(0, str(project_root / "src"))
 from stable_baselines3 import SAC, PPO
 
 from scripts.train import create_env
+from tailsitter.callbacks import ProgressCallback
 from tailsitter.config import load_training_config
 
 
@@ -57,7 +58,8 @@ def main():
     print(f"Loaded from: {args.checkpoint}\n")
 
     # Train
-    model.learn(total_timesteps=args.timesteps, progress_bar=True)
+    callback = ProgressCallback(total_timesteps=args.timesteps)
+    model.learn(total_timesteps=args.timesteps, callback=callback)
 
     # Save
     run_name = f"DP_{args.algo}_continued_{args.timesteps}"

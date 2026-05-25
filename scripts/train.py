@@ -26,6 +26,7 @@ from tailsitter.config import (
     load_training_config,
     ResetConfig,
 )
+from tailsitter.callbacks import ProgressCallback
 from tailsitter.dynamics import LongitudinalDynamics
 from tailsitter.env import TailsitterLongitudinalEnv
 from tailsitter.normalization import Normalizer
@@ -155,7 +156,7 @@ def main():
                 net_arch=train_cfg.net_arch,
                 activation_fn=activation_fn,
             ),
-            verbose=1,
+            verbose=0,
         )
     else:
         model = PPO(
@@ -175,7 +176,7 @@ def main():
                 net_arch=train_cfg.net_arch,
                 activation_fn=activation_fn,
             ),
-            verbose=1,
+            verbose=0,
         )
 
     # Create results directory
@@ -188,7 +189,8 @@ def main():
     print(f"Results will be saved to: {run_dir}\n")
 
     # Train
-    model.learn(total_timesteps=total_timesteps, progress_bar=True)
+    callback = ProgressCallback(total_timesteps=total_timesteps)
+    model.learn(total_timesteps=total_timesteps, callback=callback)
 
     # Save
     model.save(str(run_dir / "agent"))
