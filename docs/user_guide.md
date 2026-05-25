@@ -134,6 +134,97 @@ The system supports two flight modes controlled by the `cmd` variable:
 | -1 | Forward flight | V=20 m/s, α≈5°, θ≈5° |
 | 1 | Hover | V≈0 m/s, α≈90°, θ≈90° |
 
+## Trim Analysis
+
+The trim module finds equilibrium points (steady-state control inputs) across the flight envelope and computes the transition corridor.
+
+### Single Point Trim
+
+Find trim at a specific operating point:
+
+```bash
+python scripts/trim.py point --V 15 --theta 10
+```
+
+Output includes throttle, elevator deflection, angle of attack, flight path angle, and residual.
+
+### Level Flight Trim
+
+Sweep level flight trim (θ=α, γ=0) over velocity range:
+
+```bash
+python scripts/trim.py level-flight --v-step 0.5
+```
+
+Generates plots of θ, δe, and δt vs airspeed in `results/trim/`.
+
+### Transition Corridor
+
+Compute the full transition corridor over a (V, θ) grid:
+
+```bash
+python scripts/trim.py corridor --v-step 1 --theta-step 5
+```
+
+Generates 7 plots:
+1. Corridor boundary (trimmable region)
+2. Trim angle of attack heatmap
+3. Flight path angle heatmap
+4. Elevator deflection heatmap
+5. Throttle heatmap
+6. Forward transition residual moment
+7. Backward transition residual moment
+
+### Corridor with Linearization
+
+Add eigenvalue and controllability analysis:
+
+```bash
+python scripts/trim.py corridor --v-step 2 --theta-step 10 --linearize
+```
+
+Generates additional plots for eigenvalue real parts, real eigenvalue count, and controllability Gramian.
+
+### Custom Configuration
+
+```bash
+# Use aero config 1 with moving mass at -0.2m
+python scripts/trim.py corridor --config aero_cfg1 --xs -0.2
+
+# Fine grid with parallel processing
+python scripts/trim.py corridor --v-step 0.5 --theta-step 2 --n-jobs 4
+
+# Save to custom directory
+python scripts/trim.py corridor --output-dir results/my_trim
+```
+
+### Understanding Trim Results
+
+| Output | Description |
+|--------|-------------|
+| `trim_flag` | 1 = trimmable, 0 = not trimmable |
+| `throttle` | Trim throttle command [0, 1] |
+| `elevator` | Trim elevator deflection [deg] |
+| `alpha` | Trim angle of attack [deg] |
+| `gamma` | Flight path angle θ-α [deg] |
+| `max_moment_ft` | Forward transition residual moment |
+| `max_moment_bt` | Backward transition residual moment |
+
+## Trajectory Optimization
+
+Find optimal transition trajectories using CasADi + IPOPT:
+
+```bash
+# Forward flight → hover
+python scripts/trajectory_optimize.py --direction forward2hover
+
+# Hover → forward flight
+python scripts/trajectory_optimize.py --direction hover2forward
+
+# Custom settings
+python scripts/trajectory_optimize.py --num-nodes 200 --tf-guess 15
+```
+
 ## Troubleshooting
 
 ### ModuleNotFoundError: No module named 'tailsitter'

@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Trim Analysis**: `src/tailsitter/trim.py` — trim solvers and transition corridor sweep, refactored from `matlab/trim/`. Includes level flight trim, general trim with random restarts (SLSQP), and max-residual-moment optimization with force constraints
+- **Linearization**: `src/tailsitter/linearization.py` — numerical Jacobian computation, eigenvalue/controllability/stability/modal analysis at trim points, refactored from `matlab/trim/linearization/`
+- **Trim Plotting**: `src/tailsitter/trim_plotting.py` — SCI-style corridor heatmaps (alpha, gamma, elevator, throttle, residual moment) and eigenvalue corridor plots
+- **Trim CLI**: `scripts/trim.py` — command-line entry point with `corridor`, `level-flight`, and `point` subcommands
+- **Trim Tests**: `tests/test_trim.py` — 18 unit tests covering aero computation, trim solvers, corridor sweep, and linearization
 - **Trajectory Optimization**: `src/tailsitter/trajectory_optimization.py` — CasADi direct collocation optimizer with IPOPT backend for finding optimal transition trajectories (forward flight ↔ hover)
 - **Trajectory Plotting**: `src/tailsitter/trajectory_plotting.py` — visualization module for trajectory optimization results
 - **Trajectory CLI**: `scripts/trajectory_optimize.py` — command-line entry point for trajectory optimization

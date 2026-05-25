@@ -29,6 +29,21 @@ python scripts/train_continue.py --checkpoint results/DP_sac_40000000/agent --al
 # Evaluate trained agent
 python scripts/evaluate.py --checkpoint results/DP_sac_40000000/agent --algo sac
 
+# Trim analysis: single point
+python scripts/trim.py point --V 15 --theta 10
+
+# Trim analysis: level flight sweep
+python scripts/trim.py level-flight --v-step 0.5
+
+# Trim analysis: transition corridor sweep
+python scripts/trim.py corridor --v-step 1 --theta-step 5
+
+# Trim analysis: corridor with linearization
+python scripts/trim.py corridor --v-step 2 --theta-step 10 --linearize
+
+# Trajectory optimization
+python scripts/trajectory_optimize.py --direction hover2forward
+
 # Run tests
 python -m pytest tests/ -v
 
@@ -111,19 +126,27 @@ TailsitterControl/
 │   ├── convert_mat_to_npy.py  # One-time data conversion
 │   ├── train.py               # Main training script
 │   ├── train_continue.py      # Continue from checkpoint
-│   └── evaluate.py            # Test trained agent
+│   ├── evaluate.py            # Test trained agent
+│   ├── trajectory_optimize.py # CasADi trajectory optimization
+│   └── trim.py                # Trim analysis and transition corridor
 ├── src/tailsitter/            # Core Python package
 │   ├── config.py              # YAML config loaders, dataclasses
 │   ├── dynamics.py            # 5-DOF longitudinal dynamics
 │   ├── env.py                 # Gymnasium environment
+│   ├── linearization.py       # Linearization and eigenvalue analysis
 │   ├── normalization.py       # State/action normalization
 │   ├── plotting.py            # Matplotlib visualization
 │   ├── reset.py               # Episode reset logic
-│   └── reward.py              # 5-component reward function
+│   ├── reward.py              # 5-component reward function
+│   ├── trajectory_optimization.py # CasADi trajectory optimization
+│   ├── trajectory_plotting.py # Trajectory result visualization
+│   ├── trim.py                # Trim solvers and corridor sweep
+│   └── trim_plotting.py       # Trim corridor visualization
 └── tests/                     # Unit tests
     ├── test_env.py
     ├── test_normalization.py
-    └── test_reward.py
+    ├── test_reward.py
+    └── test_trim.py
 ```
 
 ### Core Modules (`src/tailsitter/`)
@@ -135,6 +158,11 @@ TailsitterControl/
 - `normalization.py` — State/action normalization matching Simulink Gain blocks
 - `reset.py` — Episode reset logic (SAC: 99/1 split, PPO: 50/50 split)
 - `plotting.py` — Matplotlib visualization (reward curves, simulation response)
+- `trim.py` — Trim solvers and transition corridor sweep (refactored from `matlab/trim/`)
+- `linearization.py` — Linearization and eigenvalue/controllability analysis (refactored from `matlab/trim/linearization/`)
+- `trim_plotting.py` — Corridor and eigenvalue heatmap visualization
+- `trajectory_optimization.py` — CasADi + IPOPT trajectory optimization
+- `trajectory_plotting.py` — Trajectory result visualization
 
 ### State Space
 

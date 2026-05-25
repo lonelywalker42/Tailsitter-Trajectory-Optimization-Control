@@ -228,3 +228,86 @@ Backward Euler (Radau degree 1) is used because higher-degree collocation (d=2, 
 - Only backward Euler (d=1) converges; higher accuracy requires better initial guesses
 
 See `docs/trajectory_optimization_plan.md` for the convergence improvement plan.
+
+## Trim Analysis
+
+The trim module (`trim.py`) finds equilibrium points across the flight envelope by solving force/moment balance equations. Refactored from `matlab/trim/`.
+
+### Trim Problem Formulation
+
+At each (V, θ) operating point, find control inputs (throttle, elevator) and angle of attack α such that:
+
+```
+Fx = L·sin(α) - D·cos(α) + 2·Fprop - m·g·sin(θ) = 0
+Fz = -L·cos(α) - D·sin(α) + m·g·cos(θ) = 0
+M  = M_aero - ms·g·xs = 0
+```
+
+Decision variables: `x = [throttle, ele_deg, alpha_rad]`
+
+### Optimization Approach
+
+- **Optimizer**: `scipy.optimize.minimize(method='SLSQP')` with bound constraints
+- **Bounds**: throttle ∈ [0, 1], elevator ∈ [-30°, 20°], alpha ∈ [θ±45°]
+- **Random restarts**: Up to 15 random initial points to avoid local minima (matches MATLAB `trim_Alpha.m`)
+
+### Trim Modes
+
+| Mode | Function | Description |
+|------|----------|-------------|
+| Level flight | `trim_level_flight()` | θ = α, γ = 0. Maps `trim_Theta.m` |
+| General | `trim_at_conditions()` | Free α search. Maps `trim_Alpha.m` |
+| Max moment | `trim_max_moment()` | Max residual M with force constraint. Maps `trim_MaxMy.m` |
+
+### Transition Corridor
+
+The corridor sweep (`sweep_corridor()`) evaluates trim feasibility over a (V, θ) grid. At each point:
+1. Find equilibrium trim (`trim_at_conditions`)
+2. Find max residual moment for forward/backward transition (`trim_max_moment`)
+3. Flag is 1 if equilibrium is found and at least one transition moment exists
+
+Uses `concurrent.futures.ProcessPoolExecutor` for parallel computation (replaces MATLAB `parfor`).
+
+### Aerodynamic Model (Trim)
+
+The trim module uses a simplified aero model (matching `trim_func.m`):
+- Lift/Drag: from alpha lookup only (no elevator increment)
+- Moment: from alpha lookup + elevator increment via slipstream dynamic pressure
+- Propulsion: throttle → thrust lookup, slipstream velocity via momentum theory
+
+## Linearization
+
+The linearization module (`linearization.py`) computes Jacobians and analyzes system properties at trim points. Refactored from `matlab/trim/linearization/`.
+
+### Linearized Dynamics
+
+4-DOF state: `[V, α, θ, q]`, 2D control: `[throttle, elevator]`
+
+```
+V̇  = (-D - m·g·sin(θ-α) + 2·Fprop·cos(α)) / m
+α̇  = (-L + m·g·cos(θ-α) - 2·Fprop·sin(α)) / (m·V) + q
+θ̇  = q
+q̇  = (M - ms·g·xs) / Jy
+```
+
+### Numerical Linearization
+
+Jacobian matrices A (4×4) and B (4×2) are computed via central finite differences:
+
+```
+A[:,j] = (f(x+ε·ej) - f(x-ε·ej)) / (2ε)
+B[:,j] = (f(u+ε·ej) - f(u-ε·ej)) / (2ε)
+```
+
+Default perturbation: ε = 10⁻⁶
+
+### System Analysis
+
+| Analysis | Function | Metrics |
+|----------|----------|---------|
+| Eigenvalue | `analyze_eigenvalues()` | Real/complex count, max/min real part |
+| Controllability | `analyze_controllability()` | Rank, PBH test, Gramian SVD, modal controllability |
+| Stability | `analyze_stability()` | Type, margin, damping ratios |
+| Modal | `analyze_modes()` | Time constants, natural freq, overshoot |
+
+The `sweep_linearization()` function runs analysis across the entire corridor grid, adding eigenvalue/controllability heatmaps to the TrimMesh.
