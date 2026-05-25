@@ -17,6 +17,19 @@ All notable changes to this project will be documented in this file.
 - **Trajectory Tests**: `tests/test_trajectory_optimization.py` — unit tests for config, interpolants, collocation coefficients, dynamics, and NLP construction
 - **CasADi Dependency**: Added `casadi>=3.6` to `pyproject.toml` and `requirements.txt`
 
+### Fixed
+
+- **Trajectory Initial Guess**: Replaced linear interpolation with S-curve (cubic Hermite) for theta, parabolic pitch rate, and clamped throttle ramp — IPOPT now starts closer to feasibility
+- **Trajectory us Bounds**: Relaxed `us` state bounds from `[0, 0]` to `[-0.01, 0.01]` to remove N+1 tight-bound equality constraints; `w_dus=10000` still drives us toward 0
+- **Trajectory Elevator Dynamics**: Restored elevator sign inversion (`dcm(-de)`) and added CL/CD elevator increments (`dcL(-de)`, `dcD(-de)`) matching MATLAB `LonDyn.m`
+
+### Changed
+
+- **Trajectory IPOPT Tuning**: Added configurable `ipopt_mu_strategy`, `ipopt_hessian_approximation`, and `ipopt_warm_start` options to `TrajectoryOptConfig`
+- **Trajectory Collocation**: Made collocation degree configurable (`collocation_degree=1,2,3`); default remains d=1 (backward Euler)
+- **Trajectory Two-Stage Solve**: Added `solve_from_guess()` and `resample_solution()` methods for warm-starting; CLI now supports `--two-stage` flag (coarse N=20 → fine N=num-nodes)
+- **Trajectory CLI**: Added `--mu-strategy`, `--hessian`, and `--collocation-degree` arguments
+
 ## [0.1.0] - 2026-05-24
 
 ### Added

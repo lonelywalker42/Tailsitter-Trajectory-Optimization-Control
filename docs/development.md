@@ -83,10 +83,15 @@ Use semantic commit messages:
 - [x] Implement `trajectory_plotting.py` — visualization module
 - [x] Implement `trajectory_optimize.py` — CLI entry point
 - [x] Write unit tests for trajectory optimization
-- [ ] **IPOPT convergence** — solver oscillates on dual infeasibility, does not converge
+- [x] Improve initial guess (S-curve interpolation for theta/q/dt)
+- [x] Relax us bounds to remove tight-bound equality constraints
+- [x] Restore elevator sign fix (`dcm(-de)`) and CL/CD increments
+- [x] Add two-stage coarse-to-fine solve (`solve_from_guess`, `resample_solution`)
+- [x] Add IPOPT tuning options (mu_strategy, hessian_approximation, warm_start)
+- [x] Make collocation degree configurable (d=1,2,3)
+- [x] Update CHANGELOG.md
+- [ ] **IPOPT convergence verification** — run full solve and verify convergence
 - [ ] End-to-end verification (import → test → full solve → plot)
-- [ ] Restore elevator sign fix (`dcm(-de)`) and CL/CD increments once convergence achieved
-- [ ] Update CHANGELOG.md
 
 ## Running Tests
 

@@ -36,10 +36,10 @@ class TrajectoryOptConfig:
 
     # State bounds  [u, w, theta, q, h, as, vs, xs, dt, de, us]
     x_min: np.ndarray = field(default_factory=lambda: np.array(
-        [-10, -10, -2*np.pi/3, -10*np.pi, -100, -0.1, -0.03, -0.4, 0, -30, 0],
+        [-10, -10, -2*np.pi/3, -10*np.pi, -100, -0.1, -0.03, -0.4, 0, -30, -0.01],
         dtype=np.float64))
     x_max: np.ndarray = field(default_factory=lambda: np.array(
-        [30, 30, 2*np.pi/3, 10*np.pi, 100, 0.1, 0.03, 0, 1, 20, 0],
+        [30, 30, 2*np.pi/3, 10*np.pi, 100, 0.1, 0.03, 0, 1, 20, 0.01],
         dtype=np.float64))
 
     # Control bounds  [dtdot, dedot, usdot]
@@ -82,6 +82,14 @@ class TrajectoryOptConfig:
     ipopt_max_iter: int = 5000
     ipopt_tol: float = 1e-6
     ipopt_print_level: int = 5
+
+    # IPOPT algorithm tuning
+    ipopt_mu_strategy: str = 'adaptive'       # 'adaptive' or 'monotone'
+    ipopt_hessian_approximation: str = 'exact'  # 'exact' or 'limited-memory'
+    ipopt_warm_start: bool = False
+
+    # Collocation
+    collocation_degree: int = 1  # 1=backward Euler, 2 or 3 for higher accuracy
 
     # Direction
     direction: str = "forward2hover"  # or "hover2forward"
@@ -336,11 +344,12 @@ class TailsitterTrajectoryOptimizer:
         q0 = 0.5 * p.rho * V0_sq
         q_ind = 0.5 * p.rho * (v_ind + V0 * cs.cos(alpha0))**2
 
-        # Aero coefficients
-        cL = self._cL_interp(alpha0)
-        cD = self._cD_interp(alpha0)
+        # Aero coefficients with elevator increments
+        # Elevator sign inversion: MATLAB uses de=-u(2), so lookup at -de
+        cL = self._cL_interp(alpha0) + self._dcL_interp(-de)
+        cD = self._cD_interp(alpha0) + self._dcD_interp(-de)
         cm = self._cm_interp(alpha0)
-        dcm = self._dcm_interp(de)
+        dcm = self._dcm_interp(-de)
 
         # Forces and moment
         L = q0 * p.S * cL
@@ -400,7 +409,7 @@ class TailsitterTrajectoryOptimizer:
         """Build the CasADi NLP with Radau direct collocation."""
         cfg = self.cfg
         N = cfg.num_nodes
-        d = 1  # backward Euler (Radau degree 1) — converges reliably
+        d = cfg.collocation_degree
         nx = 11
         nu = 3
 
@@ -483,21 +492,30 @@ class TailsitterTrajectoryOptimizer:
             Lk = self._stage_cost(Xk, Uk)
             J += h * Lk
 
-        # Initial guess for states: linear interpolation
+        # Initial guess for states: S-curve interpolation
         if cfg.direction == "forward2hover":
-            x0_guess = cfg.x0_forward
-            xf_guess = cfg.xfg_forward2hover
+            x0_guess = cfg.x0_forward.copy()
+            xf_guess = cfg.xfg_forward2hover.copy()
             ug0 = cfg.ug0_forward2hover
             ugf = cfg.ugf_forward2hover
         else:
-            x0_guess = cfg.xf_hover
-            xf_guess = cfg.x0_forward
+            x0_guess = cfg.xf_hover.copy()
+            xf_guess = cfg.x0_forward.copy()
             ug0 = cfg.ugf_forward2hover
             ugf = cfg.ug0_forward2hover
 
+        tf_g = cfg.tf_guess
         for k in range(N + 1):
             s = k / N
-            w0.extend((x0_guess + s * (xf_guess - x0_guess)).tolist())
+            # Linear base for all states
+            xk = x0_guess + s * (xf_guess - x0_guess)
+            # S-curve (cubic Hermite) for theta: smooth pitch-over
+            xk[2] = x0_guess[2] + (xf_guess[2] - x0_guess[2]) * (3*s**2 - 2*s**3)
+            # Parabolic pitch rate: peaks at mid-transition
+            xk[3] = 6 * (xf_guess[2] - x0_guess[2]) / tf_g * s * (1 - s)
+            # Smooth throttle ramp (linear is fine, but clamp to [0,1])
+            xk[8] = np.clip(x0_guess[8] + (xf_guess[8] - x0_guess[8]) * s, 0, 1)
+            w0.extend(xk.tolist())
 
         for k in range(N):
             s = k / N
@@ -513,11 +531,17 @@ class TailsitterTrajectoryOptimizer:
             'ipopt.max_iter': cfg.ipopt_max_iter,
             'ipopt.tol': cfg.ipopt_tol,
             'ipopt.print_level': cfg.ipopt_print_level,
-            'ipopt.mu_strategy': 'adaptive',
+            'ipopt.mu_strategy': cfg.ipopt_mu_strategy,
+            'ipopt.hessian_approximation': cfg.ipopt_hessian_approximation,
             'ipopt.linear_solver': 'mumps',
             'ipopt.nlp_scaling_method': 'gradient-based',
             'ipopt.mu_init': 0.1,
         }
+
+        if cfg.ipopt_warm_start:
+            opts['ipopt.warm_start_init_point'] = 'yes'
+            opts['ipopt.warm_start_bound_push'] = 1e-6
+            opts['ipopt.warm_start_mult_bound_push'] = 1e-6
 
         self._solver = cs.nlpsol('solver', 'ipopt', nlp, opts)
 
@@ -606,3 +630,107 @@ class TailsitterTrajectoryOptimizer:
             success=success,
             tf=tf_sol,
         )
+
+    def solve_from_guess(self, w0: np.ndarray) -> TrajectoryResult:
+        """Solve using an external initial guess (e.g., from a coarse solve).
+
+        Args:
+            w0: Initial guess vector matching the decision variable layout.
+                 Layout: [Tf, X_0(11), X_1(11), ..., X_N(11), U_0(3), ..., U_{N-1}(3)]
+
+        Returns:
+            TrajectoryResult from the fine solve.
+        """
+        if self._solver is None:
+            raise RuntimeError("Call build() before solve_from_guess().")
+
+        cfg = self.cfg
+        N = cfg.num_nodes
+        nx = 11
+        nu = 3
+
+        # Set boundary condition values
+        lbg = self._lbg.copy()
+        ubg = self._ubg.copy()
+
+        if cfg.direction == "forward2hover":
+            x0_val = cfg.x0_forward
+            xf_val = cfg.xf_hover
+        else:
+            x0_val = cfg.xf_hover
+            xf_val = cfg.x0_forward
+
+        lbg[:nx] = x0_val
+        ubg[:nx] = x0_val
+        lbg[nx:2*nx] = xf_val
+        ubg[nx:2*nx] = xf_val
+
+        t_start = _time.time()
+        sol = self._solver(x0=w0, lbx=self._lbw, ubx=self._ubw,
+                           lbg=lbg, ubg=ubg)
+        solve_time = _time.time() - t_start
+
+        w_sol = np.array(sol['x']).flatten()
+        tf_sol = float(w_sol[0])
+        cost_sol = float(sol['f'])
+
+        idx = 1
+        X_sol = np.zeros((N + 1, nx))
+        for k in range(N + 1):
+            X_sol[k, :] = w_sol[idx:idx + nx]
+            idx += nx
+
+        U_sol = np.zeros((N, nu))
+        for k in range(N):
+            U_sol[k, :] = w_sol[idx:idx + nu]
+            idx += nu
+
+        time_vec = np.linspace(0, tf_sol, N + 1)
+
+        status = self._solver.stats()
+        success = status['return_status'] in ['Solve_Succeeded', 'Solved_To_Acceptable_Level']
+
+        return TrajectoryResult(
+            time=time_vec,
+            state=X_sol,
+            control=U_sol,
+            cost=cost_sol,
+            solve_time=solve_time,
+            success=success,
+            tf=tf_sol,
+        )
+
+    @staticmethod
+    def resample_solution(result: TrajectoryResult, N_new: int) -> np.ndarray:
+        """Resample a trajectory result onto a new mesh for warm-starting.
+
+        Args:
+            result: Coarse trajectory result.
+            N_new: Number of nodes in the new (fine) mesh.
+
+        Returns:
+            w0: Initial guess vector for the fine mesh.
+        """
+        N_old = result.state.shape[0] - 1
+        nx = result.state.shape[1]
+        nu = result.control.shape[1]
+
+        # Normalized time for old and new meshes
+        t_old = np.linspace(0, 1, N_old + 1)
+        t_new = np.linspace(0, 1, N_new + 1)
+
+        w0 = [result.tf]  # Tf guess
+
+        # Resample states
+        for j in range(nx):
+            x_interp = np.interp(t_new, t_old, result.state[:, j])
+            w0.extend(x_interp.tolist())
+
+        # Resample controls
+        t_ctrl_old = np.linspace(0, 1, N_old)
+        t_ctrl_new = np.linspace(0, 1, N_new)
+        for j in range(nu):
+            u_interp = np.interp(t_ctrl_new, t_ctrl_old, result.control[:, j])
+            w0.extend(u_interp.tolist())
+
+        return np.array(w0, dtype=np.float64)
