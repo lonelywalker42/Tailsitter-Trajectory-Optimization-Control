@@ -188,11 +188,14 @@ def main():
     print(f"Parallel environments: {n_envs}")
     print(f"Results will be saved to: {run_dir}\n")
 
-    # Train
+    # Train with Ctrl+C checkpoint saving
     callback = ProgressCallback(total_timesteps=total_timesteps)
-    model.learn(total_timesteps=total_timesteps, callback=callback)
+    try:
+        model.learn(total_timesteps=total_timesteps, callback=callback)
+    except KeyboardInterrupt:
+        pass
 
-    # Save
+    # Save (always — normal completion or Ctrl+C interruption)
     model.save(str(run_dir / "agent"))
     print(f"\nAgent saved to {run_dir / 'agent.zip'}")
 

@@ -57,11 +57,14 @@ def main():
     print(f"Parallel environments: {n_envs}")
     print(f"Loaded from: {args.checkpoint}\n")
 
-    # Train
+    # Train with Ctrl+C checkpoint saving
     callback = ProgressCallback(total_timesteps=args.timesteps)
-    model.learn(total_timesteps=args.timesteps, callback=callback)
+    try:
+        model.learn(total_timesteps=args.timesteps, callback=callback)
+    except KeyboardInterrupt:
+        pass
 
-    # Save
+    # Save (always — normal completion or Ctrl+C interruption)
     run_name = f"DP_{args.algo}_continued_{args.timesteps}"
     run_dir = results_dir / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
