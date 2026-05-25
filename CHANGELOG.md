@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Trajectory Optimization**: `src/tailsitter/trajectory_optimization.py` — CasADi direct collocation optimizer with IPOPT backend for finding optimal transition trajectories (forward flight ↔ hover)
+- **Trajectory Plotting**: `src/tailsitter/trajectory_plotting.py` — visualization module for trajectory optimization results
+- **Trajectory CLI**: `scripts/trajectory_optimize.py` — command-line entry point for trajectory optimization
+- **Trajectory Tests**: `tests/test_trajectory_optimization.py` — unit tests for config, interpolants, collocation coefficients, dynamics, and NLP construction
+- **CasADi Dependency**: Added `casadi>=3.6` to `pyproject.toml` and `requirements.txt`
+
 ## [0.1.0] - 2026-05-24
 
 ### Added

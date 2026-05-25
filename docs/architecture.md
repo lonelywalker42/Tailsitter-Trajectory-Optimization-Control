@@ -185,3 +185,46 @@ Clamped to [0, 1]. When `success_integral ≥ 1`, episode terminates successfull
 | Excessive pitch | θ ≥ 25° | Simulink |
 | Success | success_integral ≥ 1 | Simulink |
 | Timeout | t ≥ 20 s | Config |
+
+## Trajectory Optimization
+
+The trajectory optimization module (`trajectory_optimization.py`) finds optimal transition trajectories using CasADi + IPOPT, independent of the RL pipeline.
+
+### Design
+
+- **Solver**: CasADi `nlpsol` with IPOPT backend
+- **Collocation**: Backward Euler (d=1 Radau) — reliable convergence for non-smooth aero tables
+- **Dynamics**: 11D state (8 plant + 3 augmented controls), 3D control (rates), matching MATLAB `LonDyn.m` cfg1 tables
+- **Objective**: `min(tf + ∫ L(x,u) dt)` with weights matching MATLAB `UAVContinuous.m`
+
+### State Vector (11D)
+
+| Index | Symbol | Description | Group |
+|-------|--------|-------------|-------|
+| 0 | u | Body x-velocity | Plant |
+| 1 | w | Body z-velocity | Plant |
+| 2 | θ | Pitch angle | Plant |
+| 3 | q | Pitch rate | Plant |
+| 4 | h | Altitude | Plant |
+| 5 | as | Moving mass accel | Mass |
+| 6 | vs | Moving mass vel | Mass |
+| 7 | xs | Moving mass pos | Mass |
+| 8 | δt | Throttle | Aug. ctrl |
+| 9 | δe | Elevator | Aug. ctrl |
+| 10 | us | Moving mass input | Aug. ctrl |
+
+### Collocation
+
+Backward Euler (Radau degree 1) is used because higher-degree collocation (d=2, d=3) does not converge with the non-smooth piecewise-linear aerodynamic interpolants. The collocation coefficient matrices satisfy:
+
+- `C = [[-1, -1], [1, 1]]` — derivative at collocation points
+- `D = [0, 1]` — continuity (endpoint property of Radau)
+- `B = [0.5, 0.5]` — quadrature weights
+
+### Current Limitations
+
+- IPOPT does not converge (dual infeasibility oscillation)
+- Elevator sign fix and CL/CD increments disabled for convergence
+- Only backward Euler (d=1) converges; higher accuracy requires better initial guesses
+
+See `docs/trajectory_optimization_plan.md` for the convergence improvement plan.

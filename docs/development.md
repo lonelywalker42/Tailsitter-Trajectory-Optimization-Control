@@ -77,6 +77,17 @@ Use semantic commit messages:
 - [x] Write unit tests for environment
 - [x] All tests passing (24/24)
 
+### Phase 7: Trajectory Optimization (In Progress)
+
+- [x] Implement `trajectory_optimization.py` — CasADi direct collocation (backward Euler)
+- [x] Implement `trajectory_plotting.py` — visualization module
+- [x] Implement `trajectory_optimize.py` — CLI entry point
+- [x] Write unit tests for trajectory optimization
+- [ ] **IPOPT convergence** — solver oscillates on dual infeasibility, does not converge
+- [ ] End-to-end verification (import → test → full solve → plot)
+- [ ] Restore elevator sign fix (`dcm(-de)`) and CL/CD increments once convergence achieved
+- [ ] Update CHANGELOG.md
+
 ## Running Tests
 
 ```bash
