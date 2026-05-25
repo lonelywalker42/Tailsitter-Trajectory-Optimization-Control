@@ -24,7 +24,9 @@
 - **精确奖励函数**：5 分量奖励函数，从 `RL/LonEnv.slx` 逆向工程获得
 - **双算法支持**：支持 SAC 和 PPO 两种强化学习算法
 - **模块化设计**：动力学、奖励、归一化、重置逻辑独立模块
-- **完整测试**：24 个单元测试覆盖核心功能
+- **配平分析**：稳态配平求解、过渡走廊扫描、线性化与特征值分析
+- **轨迹优化**：CasADi + IPOPT 直接配点法求解最优过渡轨迹
+- **完整测试**：67 个单元测试覆盖全部核心功能
 
 ### 快速开始
 
@@ -73,6 +75,32 @@ python scripts/evaluate.py \
 
 评估结果保存在 `results/evaluation/` 目录下，包含前飞转换和回转转换的响应曲线。
 
+#### 配平分析
+
+```bash
+# 单点配平
+python scripts/trim.py point --V 15 --theta 10
+
+# 过渡走廊扫描
+python scripts/trim.py corridor --v-step 1 --theta-step 5
+
+# 走廊扫描 + 线性化分析
+python scripts/trim.py corridor --v-step 2 --theta-step 10 --linearize
+```
+
+#### 轨迹优化
+
+```bash
+# 前飞 → 悬停
+python scripts/trajectory_optimize.py --direction forward2hover
+
+# 两阶段求解（粗网格 → 精网格热启动）
+python scripts/trajectory_optimize.py --direction forward2hover --two-stage
+
+# L-BFGS Hessian + 单调屏障策略
+python scripts/trajectory_optimize.py --direction forward2hover --hessian limited-memory --mu-strategy monotone
+```
+
 #### 运行测试
 
 ```bash
@@ -96,22 +124,30 @@ TailsitterControl/
 │   ├── raw/                   # 原始 .mat/.xlsx 文件
 │   └── processed/             # 转换后的 .npy 文件
 ├── docs/                      # 补充文档
+│   ├── theory.md              # 理论基础（动力学、RL、奖励函数）
 │   ├── architecture.md        # 架构设计说明
 │   ├── user_guide.md          # 用户指南
 │   └── development.md         # 开发指南
-├── scripts/                   # 训练和评估脚本
+├── scripts/                   # 训练、评估和分析脚本
 │   ├── convert_mat_to_npy.py  # 数据转换
 │   ├── train.py               # 训练入口
 │   ├── train_continue.py      # 断点续训
-│   └── evaluate.py            # 评估脚本
+│   ├── evaluate.py            # 评估脚本
+│   ├── trim.py                # 配平分析与过渡走廊
+│   └── trajectory_optimize.py # 轨迹优化
 ├── src/tailsitter/            # 核心 Python 包
 │   ├── config.py              # 配置加载器
 │   ├── dynamics.py            # 动力学模型
 │   ├── env.py                 # Gymnasium 环境
+│   ├── linearization.py       # 线性化与特征值分析
 │   ├── normalization.py       # 状态/动作归一化
 │   ├── plotting.py            # 可视化
 │   ├── reset.py               # 回合重置逻辑
-│   └── reward.py              # 奖励函数
+│   ├── reward.py              # 奖励函数
+│   ├── trajectory_optimization.py # CasADi 轨迹优化
+│   ├── trajectory_plotting.py # 轨迹结果可视化
+│   ├── trim.py                # 配平求解与走廊扫描
+│   └── trim_plotting.py       # 走廊热力图可视化
 └── tests/                     # 单元测试
 ```
 
@@ -139,6 +175,7 @@ TailsitterControl/
 - [架构设计](docs/architecture.md) — 技术细节和设计决策
 - [用户指南](docs/user_guide.md) — 使用说明
 - [开发指南](docs/development.md) — 开发流程和里程碑
+- [轨迹优化计划](docs/trajectory_optimization_plan.md) — 收敛改进计划与进展
 - [更新日志](CHANGELOG.md) — 版本历史
 
 ### 许可证
@@ -161,7 +198,9 @@ This project uses reinforcement learning (SAC/PPO) to train agents that control 
 - **Precise Reward Function**: 5-component reward function reverse-engineered from `RL/LonEnv.slx`
 - **Dual Algorithm Support**: SAC and PPO reinforcement learning algorithms
 - **Modular Design**: Separate modules for dynamics, reward, normalization, and reset logic
-- **Comprehensive Testing**: 24 unit tests covering core functionality
+- **Trim Analysis**: Steady-state trim solvers, transition corridor sweep, linearization and eigenvalue analysis
+- **Trajectory Optimization**: CasADi + IPOPT direct collocation for optimal transition trajectories
+- **Comprehensive Testing**: 67 unit tests covering all core functionality
 
 ### Quick Start
 
@@ -210,6 +249,32 @@ python scripts/evaluate.py \
 
 Results are saved to `results/evaluation/` as PNG plots showing forward and back transition responses.
 
+#### Trim Analysis
+
+```bash
+# Single point trim
+python scripts/trim.py point --V 15 --theta 10
+
+# Transition corridor sweep
+python scripts/trim.py corridor --v-step 1 --theta-step 5
+
+# Corridor with linearization analysis
+python scripts/trim.py corridor --v-step 2 --theta-step 10 --linearize
+```
+
+#### Trajectory Optimization
+
+```bash
+# Forward flight → hover
+python scripts/trajectory_optimize.py --direction forward2hover
+
+# Two-stage solve (coarse → fine, warm-started)
+python scripts/trajectory_optimize.py --direction forward2hover --two-stage
+
+# L-BFGS Hessian with monotone barrier strategy
+python scripts/trajectory_optimize.py --direction forward2hover --hessian limited-memory --mu-strategy monotone
+```
+
 #### Running Tests
 
 ```bash
@@ -233,22 +298,30 @@ TailsitterControl/
 │   ├── raw/                   # Original .mat/.xlsx files
 │   └── processed/             # Converted .npy files
 ├── docs/                      # Supplementary documentation
+│   ├── theory.md              # Theoretical foundations (dynamics, RL, reward)
 │   ├── architecture.md        # Architecture and design decisions
 │   ├── user_guide.md          # Usage instructions
 │   └── development.md         # Development workflow
-├── scripts/                   # Training and evaluation scripts
+├── scripts/                   # Training, evaluation, and analysis scripts
 │   ├── convert_mat_to_npy.py  # Data conversion
 │   ├── train.py               # Training entry point
 │   ├── train_continue.py      # Continue from checkpoint
-│   └── evaluate.py            # Evaluation script
+│   ├── evaluate.py            # Evaluation script
+│   ├── trim.py                # Trim analysis and transition corridor
+│   └── trajectory_optimize.py # Trajectory optimization
 ├── src/tailsitter/            # Core Python package
 │   ├── config.py              # Configuration loaders
 │   ├── dynamics.py            # Dynamics model
 │   ├── env.py                 # Gymnasium environment
+│   ├── linearization.py       # Linearization and eigenvalue analysis
 │   ├── normalization.py       # State/action normalization
 │   ├── plotting.py            # Visualization
 │   ├── reset.py               # Episode reset logic
-│   └── reward.py              # Reward function
+│   ├── reward.py              # Reward function
+│   ├── trajectory_optimization.py # CasADi trajectory optimization
+│   ├── trajectory_plotting.py # Trajectory result visualization
+│   ├── trim.py                # Trim solvers and corridor sweep
+│   └── trim_plotting.py       # Corridor heatmap visualization
 └── tests/                     # Unit tests
 ```
 
@@ -276,6 +349,7 @@ TailsitterControl/
 - [Architecture](docs/architecture.md) — Technical details and design decisions
 - [User Guide](docs/user_guide.md) — Usage instructions
 - [Development Guide](docs/development.md) — Development workflow and milestones
+- [Trajectory Optimization Plan](docs/trajectory_optimization_plan.md) — Convergence improvement plan and progress
 - [Changelog](CHANGELOG.md) — Version history
 
 ### License
