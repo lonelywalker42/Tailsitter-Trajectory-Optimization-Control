@@ -1,0 +1,8 @@
+# State and action normalization matrices
+# Source: RL/initialize.m lines 41-43
+# State: [V, alpha, theta, q, h, dt_last, de_last, dV, dalpha, dtheta, cmd]
+state_norm_diag: [0.1, 0.05, 0.05, 0.1, 0.5, 1.0, 0.05, 0.2, 0.1, 0.1, 1.0]
+
+# Action: [dt, de]
+action_norm_diag: [2.0, 0.04]
+action_bias: [-0.5, 5.0]

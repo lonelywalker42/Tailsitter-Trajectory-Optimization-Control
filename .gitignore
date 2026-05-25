@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.pytest_cache/
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MATLAB (original code, not tracked)
+matlab/
+
+# Training results (large binary files)
+results/
+
+# Generated data (re-generate via: python scripts/convert_mat_to_npy.py)
+data/processed/
+
+# Claude Code working directory
+.claude/

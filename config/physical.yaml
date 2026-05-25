@@ -1,0 +1,35 @@
+# Physical parameters for tailsitter UAV longitudinal dynamics
+# Source: RL/initialize.m and mdl/Lon_mdl.slx
+
+mass:
+  body: 6.3          # kg, body mass
+  moving: 0.2        # kg, moving mass
+  total: 6.5         # kg, mb + ms
+
+inertia:
+  Jy: 0.183          # kg*m^2, pitch inertia
+
+gravity: 9.81        # m/s^2
+
+reference:
+  area: 0.62         # m^2, wing reference area (S_slide)
+  chord: 0.31        # m, mean aerodynamic chord (c_slide)
+
+propeller:
+  radius: 0.2032     # m, APC 16x8 propeller radius
+  model: "APC_16x8"
+
+motor:
+  model: "AT4125"
+
+air_density: 1.225   # kg/m^3
+
+actuator:
+  tau: 0.001         # s, first-order lag time constant
+  elevator_sign: -1  # sign inversion in Simulink
+
+environment:
+  Ts: 0.02           # s, sampling time
+  Tf: 20.0           # s, max episode time
+
+data_dir: "data/processed"

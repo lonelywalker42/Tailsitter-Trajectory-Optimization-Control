@@ -1,0 +1,26 @@
+[project]
+name = "tailsitter-control"
+version = "0.1.0"
+description = "RL-based longitudinal control for tailsitter UAV flight mode transitions"
+requires-python = ">=3.10"
+dependencies = [
+    "gymnasium>=0.29",
+    "stable-baselines3>=2.3",
+    "torch>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pyyaml>=6.0",
+    "matplotlib>=3.7",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+]
+
+[project.scripts]
+tailsitter-train = "scripts.train:main"
+tailsitter-eval = "scripts.evaluate:main"
+tailsitter-convert = "scripts.convert_mat_to_npy:main"

@@ -1,0 +1,22 @@
+# SAC training hyperparameters
+# Source: RL/train_script.m lines 104-131
+algorithm: "SAC"
+gamma: 0.99
+tau: 0.001
+learning_rate: 0.001
+buffer_size: 100000
+batch_size: 512
+warmup_steps: 256
+train_freq: 1
+gradient_steps: 1
+learning_starts: 256
+total_timesteps: 40000000  # 40000 episodes * 1000 steps
+
+# SB3 network architecture
+policy_kwargs:
+  net_arch: [256, 256]
+  activation_fn: "relu"
+
+# Training save config
+save_reward_threshold: 8000
+score_window: 20

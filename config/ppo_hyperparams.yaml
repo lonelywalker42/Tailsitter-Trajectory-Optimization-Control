@@ -1,0 +1,23 @@
+# PPO training hyperparameters
+# Source: RL/trian_PPO_script.m lines 73-90
+algorithm: "PPO"
+gamma: 0.99
+gae_lambda: 0.95
+clip_range: 0.2
+ent_coef: 0.01
+learning_rate: 0.001
+batch_size: 512
+n_epochs: 3
+n_steps: 1024
+max_grad_norm: 1.0
+vf_coef: 0.5
+total_timesteps: 40000000  # 40000 episodes * 1000 steps
+
+# SB3 network architecture
+policy_kwargs:
+  net_arch: [256, 128]
+  activation_fn: "relu"
+
+# Training save config
+save_reward_threshold: 8000
+score_window: 20
