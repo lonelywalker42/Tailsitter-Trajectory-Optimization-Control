@@ -5,6 +5,7 @@ Replaces RL/train_script.m and RL/trian_PPO_script.m.
 Usage:
     python scripts/train.py --algo sac
     python scripts/train.py --algo ppo
+    python scripts/train.py --algo sac --n-envs 4
     python scripts/train.py --algo sac --config-dir config --results-dir results
 """
 
@@ -59,20 +60,14 @@ def load_aero_data(data_dir: Path) -> dict:
     return aero
 
 
-def create_env(config_dir: Path, data_dir: Path, reset_mode: str) -> TailsitterLongitudinalEnv:
-    """Create the Gymnasium environment."""
-    phys = load_physical_config(config_dir)
-    env_cfg = load_env_config(config_dir)
-    norm_cfg = load_normalization_config(config_dir)
-    reset_cfg = ResetConfig()
-
-    aero_data = load_aero_data(data_dir)
+def _make_single_env(phys, env_cfg, norm_cfg, aero_data, reset_mode):
+    """Create a single environment instance (used by make_vec_env)."""
     dynamics = LongitudinalDynamics(phys, aero_data)
     reward_calc = RewardCalculator(env_cfg)
     normalizer = Normalizer(norm_cfg)
-    resetter = EpisodeResetter(reset_cfg)
+    resetter = EpisodeResetter(ResetConfig())
 
-    env = TailsitterLongitudinalEnv(
+    return TailsitterLongitudinalEnv(
         dynamics=dynamics,
         reward_calc=reward_calc,
         normalizer=normalizer,
@@ -81,7 +76,35 @@ def create_env(config_dir: Path, data_dir: Path, reset_mode: str) -> TailsitterL
         phys_config=phys,
         reset_mode=reset_mode,
     )
-    return env
+
+
+def create_env(config_dir: Path, data_dir: Path, reset_mode: str,
+               n_envs: int = 1):
+    """Create the Gymnasium environment (single or vectorized).
+
+    Args:
+        config_dir: Path to config directory
+        data_dir: Path to processed data directory
+        reset_mode: "sac" or "ppo"
+        n_envs: Number of parallel environments (1 = single env)
+
+    Returns:
+        gym.Env or VecEnv
+    """
+    phys = load_physical_config(config_dir)
+    env_cfg = load_env_config(config_dir)
+    norm_cfg = load_normalization_config(config_dir)
+    aero_data = load_aero_data(data_dir)
+
+    if n_envs == 1:
+        return _make_single_env(phys, env_cfg, norm_cfg, aero_data, reset_mode)
+
+    from stable_baselines3.common.env_util import make_vec_env
+
+    return make_vec_env(
+        lambda: _make_single_env(phys, env_cfg, norm_cfg, aero_data, reset_mode),
+        n_envs=n_envs,
+    )
 
 
 def main():
@@ -94,6 +117,8 @@ def main():
                         help="Path to results directory")
     parser.add_argument("--timesteps", type=int, default=None,
                         help="Override total timesteps")
+    parser.add_argument("--n-envs", type=int, default=None,
+                        help="Override number of parallel environments")
     args = parser.parse_args()
 
     config_dir = Path(args.config_dir)
@@ -103,9 +128,10 @@ def main():
     # Load training config
     train_cfg = load_training_config(config_dir, args.algo)
     total_timesteps = args.timesteps or train_cfg.total_timesteps
+    n_envs = args.n_envs if args.n_envs is not None else train_cfg.n_envs
 
     # Create environment
-    env = create_env(config_dir, data_dir, reset_mode=args.algo)
+    env = create_env(config_dir, data_dir, reset_mode=args.algo, n_envs=n_envs)
 
     # Create SB3 agent
     from stable_baselines3 import SAC, PPO
@@ -158,6 +184,7 @@ def main():
     run_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\nTraining {args.algo.upper()} for {total_timesteps} timesteps")
+    print(f"Parallel environments: {n_envs}")
     print(f"Results will be saved to: {run_dir}\n")
 
     # Train

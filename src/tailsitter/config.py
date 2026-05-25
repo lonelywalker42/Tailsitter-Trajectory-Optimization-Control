@@ -107,6 +107,9 @@ class TrainingConfig:
     net_arch: list = field(default_factory=lambda: [256, 256])
     activation_fn: str = "relu"
 
+    # Parallelism
+    n_envs: int = 1
+
 
 def load_yaml(path: str | Path) -> dict:
     """Load a YAML file and return as dict."""

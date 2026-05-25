@@ -185,6 +185,8 @@ When making changes, update documentation as follows:
 - Resume interrupted training with `train_continue.m` — it auto-loads the latest checkpoint
 - Custom terminal progress display via `train_callback.m` (shows episode reward, avg reward, progress bar, ETA)
 - When providing new MATLAB code for Python refactoring, place it under `matlab/` following the existing structure
-- The dynamics model uses `scipy.interpolate.interp1d` for lookup tables (linear interpolation)
+- Dynamics model uses Numba JIT (`@numba.njit`) for the RK4 integration kernel — first call compiles (~2-5s), cached thereafter
+- Lookup tables use `np.interp` inside Numba (replaces `scipy.interp1d`)
+- Multi-environment parallelism: set `n_envs` in YAML config or `--n-envs` CLI arg (default: 1)
 - Actuator model: first-order lag (τ=0.001s) with elevator sign inversion
 - RNG seed: 77777 (configurable in `config/physical.yaml`)

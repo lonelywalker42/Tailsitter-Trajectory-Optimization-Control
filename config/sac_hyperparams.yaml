@@ -17,6 +17,9 @@ policy_kwargs:
   net_arch: [256, 256]
   activation_fn: "relu"
 
+# Parallelism (number of parallel environments)
+n_envs: 1
+
 # Training save config
 save_reward_threshold: 8000
 score_window: 20

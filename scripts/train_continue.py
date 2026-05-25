@@ -5,6 +5,7 @@ Replaces RL/train_continue.m.
 Usage:
     python scripts/train_continue.py --checkpoint results/DP_sac_40000000/agent --algo sac
     python scripts/train_continue.py --checkpoint results/DP_ppo_40000000/agent --algo ppo --timesteps 20000000
+    python scripts/train_continue.py --checkpoint results/DP_sac_40000000/agent --algo sac --n-envs 4
 """
 
 import argparse
@@ -17,6 +18,7 @@ sys.path.insert(0, str(project_root / "src"))
 from stable_baselines3 import SAC, PPO
 
 from scripts.train import create_env
+from tailsitter.config import load_training_config
 
 
 def main():
@@ -29,14 +31,20 @@ def main():
                         help="Additional training timesteps")
     parser.add_argument("--config-dir", type=str, default="config")
     parser.add_argument("--results-dir", type=str, default="results")
+    parser.add_argument("--n-envs", type=int, default=None,
+                        help="Override number of parallel environments")
     args = parser.parse_args()
 
     config_dir = Path(args.config_dir)
     data_dir = config_dir.parent / "data" / "processed"
     results_dir = Path(args.results_dir)
 
+    # Load config for n_envs
+    train_cfg = load_training_config(config_dir, args.algo)
+    n_envs = args.n_envs if args.n_envs is not None else train_cfg.n_envs
+
     # Create environment
-    env = create_env(config_dir, data_dir, reset_mode=args.algo)
+    env = create_env(config_dir, data_dir, reset_mode=args.algo, n_envs=n_envs)
 
     # Load agent
     if args.algo == "sac":
@@ -45,6 +53,7 @@ def main():
         model = PPO.load(args.checkpoint, env=env)
 
     print(f"\nContinuing {args.algo.upper()} training for {args.timesteps} timesteps")
+    print(f"Parallel environments: {n_envs}")
     print(f"Loaded from: {args.checkpoint}\n")
 
     # Train
