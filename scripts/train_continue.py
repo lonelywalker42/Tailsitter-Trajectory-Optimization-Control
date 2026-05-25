@@ -14,6 +14,7 @@ from pathlib import Path
 
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
+sys.path.insert(0, str(project_root))
 
 from stable_baselines3 import SAC, PPO
 
