@@ -57,8 +57,11 @@ def main():
         choices=["exact", "limited-memory"],
         help="IPOPT Hessian approximation (default: exact)")
     parser.add_argument(
-        "--collocation-degree", type=int, default=1, choices=[1, 2, 3],
-        help="Radau collocation degree (default: 1)")
+        "--collocation-degree", type=int, default=2, choices=[1, 2, 3],
+        help="Radau collocation degree (default: 2)")
+    parser.add_argument(
+        "--no-auto-trim", action="store_true",
+        help="Use hardcoded boundary conditions instead of auto-trim")
     args = parser.parse_args()
 
     import numpy as np
@@ -76,6 +79,7 @@ def main():
         ipopt_mu_strategy=args.mu_strategy,
         ipopt_hessian_approximation=args.hessian,
         collocation_degree=args.collocation_degree,
+        auto_trim=not args.no_auto_trim,
     )
 
     total_time = 0.0
@@ -94,6 +98,7 @@ def main():
             ipopt_mu_strategy=args.mu_strategy,
             ipopt_hessian_approximation=args.hessian,
             collocation_degree=args.collocation_degree,
+            auto_trim=not args.no_auto_trim,
         )
         coarse_opt = TailsitterTrajectoryOptimizer(coarse_config)
         coarse_opt.build()
@@ -121,12 +126,14 @@ def main():
             ipopt_hessian_approximation=args.hessian,
             ipopt_warm_start=True,
             collocation_degree=args.collocation_degree,
+            auto_trim=not args.no_auto_trim,
         )
         fine_opt = TailsitterTrajectoryOptimizer(fine_config)
         fine_opt.build()
 
         w0_fine = TailsitterTrajectoryOptimizer.resample_solution(
-            coarse_result, N_new=args.num_nodes)
+            coarse_result, N_new=args.num_nodes,
+            collocation_degree=args.collocation_degree)
         result = fine_opt.solve_from_guess(w0_fine)
         total_time += result.solve_time
     else:

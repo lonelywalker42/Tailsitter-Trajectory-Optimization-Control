@@ -31,8 +31,8 @@ class TrajectoryOptConfig:
 
     # Time bounds
     t0: float = 0.0
-    tf_min: float = 1.0
-    tf_max: float = 50.0
+    tf_min: float = 8.0
+    tf_max: float = 20.0
 
     # State bounds  [u, w, theta, q, h, as, vs, xs, dt, de, us]
     x_min: np.ndarray = field(default_factory=lambda: np.array(
@@ -49,8 +49,11 @@ class TrajectoryOptConfig:
         [0.1, 5, 0.1], dtype=np.float64))
 
     # Path constraints
-    h_min: float = -50.0
+    h_min: float = -20.0
     h_max: float = 50.0
+    alpha_min: float = -60.0 * np.pi / 180  # rad
+    alpha_max: float = 120.0 * np.pi / 180  # rad
+    theta_max: float = 120.0 * np.pi / 180  # rad (allow full transition corridor)
 
     # Boundary conditions — forward flight
     x0_forward: np.ndarray = field(default_factory=lambda: np.array(
@@ -70,12 +73,19 @@ class TrajectoryOptConfig:
     ugf_forward2hover: np.ndarray = field(default_factory=lambda: np.array(
         [0, 0, 0], dtype=np.float64))
 
-    # Objective weights (matching MATLAB UAVContinuous.m integrand)
-    w_hdot: float = 0.1
-    w_q: float = 1.0
-    w_dtdot: float = 10.0
-    w_dt: float = 10.0
-    w_dus: float = 10000.0
+    # Objective weights (normalized to O(1) for better conditioning)
+    w_hdot: float = 0.001
+    w_q: float = 0.01
+    w_dtdot: float = 0.1
+    w_dt: float = 0.1
+    w_dus: float = 0.1
+
+    # Boundary penalty weight (balanced with scaled collocation constraints)
+    w_bc: float = 100.0
+
+    # Two-phase solve: Phase 1 boundary relaxation (radians for angles, m/s for velocities)
+    bc_relax_angle: float = 0.1   # ~5.7° relaxation for theta/alpha in Phase 1
+    bc_relax_vel: float = 0.5     # m/s relaxation for u/w in Phase 1
 
     # Solver settings
     num_nodes: int = 200
@@ -89,13 +99,20 @@ class TrajectoryOptConfig:
     ipopt_warm_start: bool = False
 
     # Collocation
-    collocation_degree: int = 1  # 1=backward Euler, 2 or 3 for higher accuracy
+    collocation_degree: int = 2  # 1=backward Euler, 2 or 3 for higher accuracy
 
     # Direction
     direction: str = "forward2hover"  # or "hover2forward"
 
     # Guess transition time
     tf_guess: float = 8.0
+
+    # Trim solver
+    auto_trim: bool = True  # compute trim points from optimizer dynamics
+    trim_V_forward: float = 20.0  # forward flight trim velocity (m/s)
+    trim_V_hover: float = 0.01   # hover trim velocity (m/s)
+    trim_tol: float = 1e-12      # trim solver tolerance
+    bc_tol: float = 0.5          # boundary condition tolerance (tight inequality)
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +276,113 @@ class TailsitterTrajectoryOptimizer:
             'dcm', 'linear', [_ELEV_DEG.tolist()], _ELEV_DCM.tolist())
         self._thrust_interp = cs.interpolant(
             'thrust', 'linear', [_THROTTLE.tolist()], _THRUST.tolist())
+
+    # ----- trim solver -----
+
+    def _find_trim(self, V_target: float,
+                   target_gamma: Optional[float] = None,
+                   target_theta: Optional[float] = None) -> np.ndarray:
+        """Find trim point at given airspeed using the optimizer's dynamics.
+
+        Solves for [alpha, theta, dt, de] such that udot=wdot=qdot=0
+        with V = sqrt(u^2 + w^2) = V_target, q=0, h=0, moving mass=0.
+
+        Args:
+            V_target: Target airspeed in m/s.
+            target_gamma: If set, penalize deviation of flight path angle
+                gamma = theta - alpha from this value (rad). Use 0 for level flight.
+            target_theta: If set, penalize deviation of theta from this value (rad).
+                Use pi/2 for hover.
+
+        Returns:
+            11D state vector at trim.
+        """
+        alpha_v = cs.MX.sym('alpha')
+        theta_v = cs.MX.sym('theta')
+        dt_v = cs.MX.sym('dt')
+        de_v = cs.MX.sym('de')
+
+        u_vel = V_target * cs.cos(alpha_v)
+        w_vel = V_target * cs.sin(alpha_v)
+        x_trim = cs.vertcat(u_vel, w_vel, theta_v, 0, 0, 0, 0, 0,
+                            dt_v, de_v, 0)
+        xdot_trim = self._ode(x_trim, cs.DM.zeros(3))
+
+        # Cost: trim condition (udot=wdot=qdot=0) + flight condition penalty
+        cost = xdot_trim[0]**2 + xdot_trim[1]**2 + xdot_trim[3]**2
+
+        w_cond = 10.0  # moderate weight — push toward desired condition
+        if target_gamma is not None:
+            gamma_err = (theta_v - alpha_v) - target_gamma
+            cost += w_cond * gamma_err**2
+        if target_theta is not None:
+            theta_err = theta_v - target_theta
+            cost += w_cond * theta_err**2
+
+        nlp = {
+            'x': cs.vertcat(alpha_v, theta_v, dt_v, de_v),
+            'f': cost,
+        }
+        solver = cs.nlpsol(
+            'trim_solver', 'ipopt', nlp,
+            {'ipopt.print_level': 0,
+             'ipopt.tol': self.cfg.trim_tol,
+             'ipopt.max_iter': 500})
+
+        best_cost = 1e10
+        best_x = None
+
+        # Grid search over initial guesses — tailored to flight condition
+        if target_theta is not None:
+            # Hover: theta near target, alpha can vary
+            alpha_guesses = [0, 5, -5, 10, -10, 15, -15]
+            theta_guesses = [np.degrees(target_theta) + d
+                             for d in [0, 5, -5, 10, -10]]
+        elif target_gamma is not None:
+            # Level flight: theta ≈ alpha + target_gamma
+            alpha_guesses = [5, 10, -5, -10, 0, 15, 20]
+            theta_guesses = [a + np.degrees(target_gamma)
+                             for a in [5, 10, -5, -10, 0, 15, 20]]
+        else:
+            alpha_guesses = [5, 10, -5, -10, 0, 20, 30, 45, 60]
+            theta_guesses = [5, 10, 30, 45, 60, 80, 90]
+
+        dt_guesses = [0.05, 0.1, 0.3, 0.5]
+        de_guesses = [0, 2, 5, -5]
+
+        for a0 in alpha_guesses:
+            for th0 in theta_guesses:
+                for dt0 in dt_guesses:
+                    for de0 in de_guesses:
+                        try:
+                            sol = solver(
+                                x0=[a0 * np.pi / 180, th0 * np.pi / 180,
+                                    dt0, de0],
+                                lbx=[-60 * np.pi / 180, 0, 0, -30],
+                                ubx=[90 * np.pi / 180, 120 * np.pi / 180,
+                                     1, 20])
+                            cost = float(sol['f'])
+                            if cost < best_cost:
+                                best_cost = cost
+                                best_x = np.array(sol['x']).flatten()
+                        except RuntimeError:
+                            pass
+
+        if best_x is None or best_cost > 10:
+            raise RuntimeError(
+                f"Trim solver failed at V={V_target} m/s "
+                f"(best cost={best_cost:.2e}). "
+                f"Check if a trim point exists in this dynamics model.")
+
+        alpha_opt, theta_opt, dt_opt, de_opt = best_x
+        u_opt = V_target * np.cos(alpha_opt)
+        w_opt = V_target * np.sin(alpha_opt)
+
+        return np.array([
+            u_opt, w_opt, theta_opt, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            dt_opt, de_opt, 0.0
+        ], dtype=np.float64)
 
     # ----- collocation coefficients -----
 
@@ -458,15 +582,28 @@ class TailsitterTrajectoryOptimizer:
         # Objective (integral cost)
         J = 0
 
-        # Initial boundary constraint
-        g.append(X_syms[0])
-        lbg.extend([0] * nx)   # placeholder, set in solve()
-        ubg.extend([0] * nx)
+        # Boundary condition targets as fixed decision variables
+        x0_target = cs.MX.sym('x0_target', nx)
+        xf_target = cs.MX.sym('xf_target', nx)
+        w.append(x0_target)
+        lbw.extend([0.0] * nx)  # placeholder
+        ubw.extend([0.0] * nx)  # placeholder
+        w.append(xf_target)
+        lbw.extend([0.0] * nx)  # placeholder
+        ubw.extend([0.0] * nx)  # placeholder
 
-        # Final boundary constraint
-        g.append(X_syms[N])
-        lbg.extend([0] * nx)   # placeholder, set in solve()
-        ubg.extend([0] * nx)
+        # Store stage cost before penalty (for continuation in solve())
+        self._J_stage = J
+        self._x0_target_sym = x0_target
+        self._xf_target_sym = xf_target
+
+        # Boundary penalty (soft constraints)
+        w_bc = cfg.w_bc
+        J += w_bc * cs.sumsqr(X_syms[0] - x0_target)
+        J += w_bc * cs.sumsqr(X_syms[N] - xf_target)
+
+        self._x0_target_idx = 1 + (N + 1) * nx + N * nu  # index in w vector
+        self._xf_target_idx = self._x0_target_idx + nx
 
         # Path constraint on altitude at all mesh nodes
         for k in range(N + 1):
@@ -474,26 +611,113 @@ class TailsitterTrajectoryOptimizer:
             lbg.append(cfg.h_min)
             ubg.append(cfg.h_max)
 
-        # Defect constraints (backward Euler: f evaluated at X[k+1])
-        for k in range(N):
-            Xk = X_syms[k]
-            Uk = U_syms[k]
-            Xk1 = X_syms[k + 1]
+        # Path constraint on alpha at all mesh nodes
+        # alpha = atan2(w, u), computed from plant states
+        for k in range(N + 1):
+            u_k = X_syms[k][0]
+            w_k = X_syms[k][1]
+            alpha_k = cs.atan2(w_k, u_k + 1e-12)
+            g.append(alpha_k)
+            lbg.append(cfg.alpha_min)
+            ubg.append(cfg.alpha_max)
 
-            # Dynamics at X[k+1] (backward Euler)
-            fk1 = self._ode(Xk1, Uk)
+        # Path constraint on theta upper bound
+        for k in range(N + 1):
+            g.append(X_syms[k][2])
+            lbg.append(-np.pi)  # no lower bound beyond state bounds
+            ubg.append(cfg.theta_max)
 
-            # Defect: X[k+1] = X[k] + h * f(X[k+1], U[k])
-            g.append(Xk1 - Xk - h * fk1)
-            lbg.extend([0] * nx)
-            ubg.extend([0] * nx)
+        # Collocation defect constraints
+        # Scale by 1/h so constraints measure velocity error (~O(1))
+        # instead of position error (~O(h)), improving NLP conditioning
+        h_inv = N / Tf  # 1/h
 
-            # Stage cost at node k
-            Lk = self._stage_cost(Xk, Uk)
-            J += h * Lk
+        if d == 1:
+            # Backward Euler: f evaluated at X[k+1]
+            for k in range(N):
+                Xk = X_syms[k]
+                Uk = U_syms[k]
+                Xk1 = X_syms[k + 1]
+
+                fk1 = self._ode(Xk1, Uk)
+
+                # Scaled: (Xk1 - Xk)/h - fk1 = 0  (velocity error form)
+                g.append(h_inv * (Xk1 - Xk) - fk1)
+                lbg.extend([0] * nx)
+                ubg.extend([0] * nx)
+
+                Lk = self._stage_cost(Xk, Uk)
+                J += h * Lk
+        else:
+            # Higher-order Radau collocation (d >= 2)
+            # Interior collocation states per interval
+            Z_syms = []
+            tau_root = [0] + list(cs.collocation_points(d, 'radau'))
+            for k in range(N):
+                Zk = []
+                for j in range(1, d + 1):
+                    Zjk = cs.MX.sym(f'Z_{k}_{j}', nx)
+                    Zk.append(Zjk)
+                    w.append(Zjk)
+                    lbw.extend(cfg.x_min.tolist())
+                    ubw.extend(cfg.x_max.tolist())
+                Z_syms.append(Zk)
+            # Store tau_root for initial guess computation below
+            self._tau_root = tau_root
+
+            for k in range(N):
+                Xk = X_syms[k]
+                Uk = U_syms[k]
+                Xk1 = X_syms[k + 1]
+                Zk = Z_syms[k]  # d interior states
+
+                # Evaluate dynamics at all collocation points
+                fk_all = [self._ode(Zk[j], Uk) for j in range(d)]
+
+                # Collocation equations (scaled by 1/h):
+                # (1/h) * [sum_j C[j,r] * Z[j] + D[r] * X[k+1]] - f(Z[r]) = 0
+                for r in range(1, d + 1):
+                    colloc_expr = C[0, r] * Xk
+                    for j in range(1, d + 1):
+                        colloc_expr += C[j, r] * Zk[j - 1]
+                    colloc_expr += D[r] * Xk1
+                    # Scale by 1/h for better conditioning
+                    colloc_expr = h_inv * colloc_expr - fk_all[r - 1]
+
+                    g.append(colloc_expr)
+                    lbg.extend([0] * nx)
+                    ubg.extend([0] * nx)
+
+                # Continuity: X[k+1] = sum_j D[j] * [X[k], Z[1], ..., Z[d]]
+                continuity = D[0] * Xk
+                for j in range(1, d + 1):
+                    continuity += D[j] * Zk[j - 1]
+                g.append(Xk1 - continuity)
+                lbg.extend([0] * nx)
+                ubg.extend([0] * nx)
+
+                # Quadrature for stage cost
+                J += h * B[0] * self._stage_cost(Xk, Uk)
+                for j in range(1, d + 1):
+                    J += h * B[j] * self._stage_cost(Zk[j - 1], Uk)
 
         # Initial guess for states: S-curve interpolation
-        if cfg.direction == "forward2hover":
+        if cfg.auto_trim:
+            # Forward trim: no gamma constraint (induced-velocity model has no
+            # level-flight trim at V=20; the only equilibria are climbing flight)
+            x0_trim = self._find_trim(cfg.trim_V_forward)
+            # Hover trim: enforce theta ≈ pi/2
+            xf_trim = self._find_trim(cfg.trim_V_hover, target_theta=np.pi/2)
+            if cfg.direction == "forward2hover":
+                x0_guess = x0_trim.copy()
+                xf_guess = xf_trim.copy()
+            else:
+                x0_guess = xf_trim.copy()
+                xf_guess = x0_trim.copy()
+            # Use trimmed control values for guess
+            ug0 = np.array([0.0, 0.0, 0.0])
+            ugf = np.array([0.0, 0.0, 0.0])
+        elif cfg.direction == "forward2hover":
             x0_guess = cfg.x0_forward.copy()
             xf_guess = cfg.xfg_forward2hover.copy()
             ug0 = cfg.ug0_forward2hover
@@ -521,11 +745,32 @@ class TailsitterTrajectoryOptimizer:
             s = k / N
             w0.extend((ug0 + s * (ugf - ug0)).tolist())
 
+        # Initial guess for boundary target variables
+        w0.extend(x0_guess.tolist())
+        w0.extend(xf_guess.tolist())
+
+        # Initial guess for interior collocation states (d >= 2)
+        if d >= 2:
+            tau_root = self._tau_root
+            for k in range(N):
+                s_k = k / N
+                s_k1 = (k + 1) / N
+                for j in range(1, d + 1):
+                    s_j = s_k + tau_root[j] * (s_k1 - s_k)
+                    zj = x0_guess + s_j * (xf_guess - x0_guess)
+                    zj[2] = x0_guess[2] + (xf_guess[2] - x0_guess[2]) * (3*s_j**2 - 2*s_j**3)
+                    zj[3] = 6 * (xf_guess[2] - x0_guess[2]) / tf_g * s_j * (1 - s_j)
+                    zj[8] = np.clip(x0_guess[8] + (xf_guess[8] - x0_guess[8]) * s_j, 0, 1)
+                    w0.extend(zj.tolist())
+
         # Build NLP
         w_cat = cs.vertcat(*w)
         g_cat = cs.vertcat(*g)
 
-        nlp = {'x': w_cat, 'f': J + Tf, 'g': g_cat}
+        # Small time penalty to prevent tf from growing unbounded
+        # Keep very small so it doesn't dominate the stage cost
+        w_tf = 0.01
+        nlp = {'x': w_cat, 'f': J + w_tf * Tf, 'g': g_cat}
 
         opts = {
             'ipopt.max_iter': cfg.ipopt_max_iter,
@@ -535,7 +780,18 @@ class TailsitterTrajectoryOptimizer:
             'ipopt.hessian_approximation': cfg.ipopt_hessian_approximation,
             'ipopt.linear_solver': 'mumps',
             'ipopt.nlp_scaling_method': 'gradient-based',
+            'ipopt.nlp_scaling_max_gradient': 100,
             'ipopt.mu_init': 0.1,
+            'ipopt.fixed_variable_treatment': 'make_parameter',
+            'ipopt.acceptable_tol': 1e-3,
+            'ipopt.acceptable_iter': 20,
+            'ipopt.bound_push': 1e-3,
+            'ipopt.bound_frac': 1e-3,
+            # MUMPS pivoting for near-singular KKT systems
+            'ipopt.mumps_pivtol': 1e-4,
+            'ipopt.mumps_pivtolmax': 0.1,
+            # Better multiplier initialization
+            'ipopt.least_square_init_primal': 'yes',
         }
 
         if cfg.ipopt_warm_start:
@@ -548,7 +804,7 @@ class TailsitterTrajectoryOptimizer:
         # Store for solve()
         self._w = w_cat
         self._g = g_cat
-        self._J = J + Tf
+        self._J = J + w_tf * Tf
         self._X_syms = X_syms
         self._U_syms = U_syms
         self._Tf_sym = Tf
@@ -563,6 +819,9 @@ class TailsitterTrajectoryOptimizer:
     def solve(self) -> TrajectoryResult:
         """Solve the trajectory optimization problem.
 
+        Uses penalty-based boundary conditions with high weight to enforce
+        boundary states without creating infeasibility.
+
         Must call build() first.
         """
         if self._solver is None:
@@ -573,34 +832,87 @@ class TailsitterTrajectoryOptimizer:
         nx = 11
         nu = 3
 
-        # Set boundary condition values
-        lbg = self._lbg.copy()
-        ubg = self._ubg.copy()
-
-        if cfg.direction == "forward2hover":
+        # Compute boundary targets
+        if cfg.auto_trim:
+            x0_val = self._find_trim(cfg.trim_V_forward)
+            xf_val = self._find_trim(cfg.trim_V_hover, target_theta=np.pi/2)
+            if cfg.direction == "hover2forward":
+                x0_val, xf_val = xf_val, x0_val
+        elif cfg.direction == "forward2hover":
             x0_val = cfg.x0_forward
             xf_val = cfg.xf_hover
         else:
             x0_val = cfg.xf_hover
             xf_val = cfg.x0_forward
 
-        # Initial boundary (first nx entries of g)
-        lbg[:nx] = x0_val
-        ubg[:nx] = x0_val
+        idx0 = self._x0_target_idx
+        idxf = self._xf_target_idx
 
-        # Final boundary (next nx entries of g)
-        lbg[nx:2*nx] = xf_val
-        ubg[nx:2*nx] = xf_val
+        # Fix boundary target variables (these are penalty targets, not state bounds)
+        lbw = self._lbw.copy()
+        ubw = self._ubw.copy()
+        lbw[idx0:idx0+nx] = x0_val
+        ubw[idx0:idx0+nx] = x0_val
+        lbw[idxf:idxf+nx] = xf_val
+        ubw[idxf:idxf+nx] = xf_val
 
-        t_start = _time.time()
-        sol = self._solver(x0=self._w0, lbx=self._lbw, ubx=self._ubw,
-                           lbg=lbg, ubg=ubg)
-        solve_time = _time.time() - t_start
+        lbg = self._lbg.copy()
+        ubg = self._ubg.copy()
 
-        # Extract solution
-        w_sol = np.array(sol['x']).flatten()
+        total_start = _time.time()
+
+        # Continuation on w_bc: solve with increasing penalty weights
+        w_bc_schedule = [100, 1000, 10000, 100000, 1e6]
+        w_cur = self._w0.copy()
+
+        for w_bc_val in w_bc_schedule:
+            # Build NLP with this w_bc
+            J_cont = self._J_stage + 0.01 * self._Tf_sym
+            J_cont += w_bc_val * cs.sumsqr(self._X_syms[0] - self._x0_target_sym)
+            J_cont += w_bc_val * cs.sumsqr(self._X_syms[N] - self._xf_target_sym)
+            nlp_cont = {'x': self._w, 'f': J_cont, 'g': self._g}
+
+            opts_cont = {
+                'ipopt.max_iter': 1000,
+                'ipopt.tol': cfg.ipopt_tol,
+                'ipopt.print_level': 0,
+                'ipopt.mu_strategy': cfg.ipopt_mu_strategy,
+                'ipopt.hessian_approximation': cfg.ipopt_hessian_approximation,
+                'ipopt.linear_solver': 'mumps',
+                'ipopt.nlp_scaling_method': 'gradient-based',
+                'ipopt.nlp_scaling_max_gradient': 100,
+                'ipopt.mu_init': 0.1,
+                'ipopt.fixed_variable_treatment': 'make_parameter',
+                'ipopt.acceptable_tol': 0.01,
+                'ipopt.acceptable_iter': 10,
+                'ipopt.bound_push': 1e-6,
+                'ipopt.bound_frac': 1e-6,
+                'ipopt.mumps_pivtol': 1e-4,
+                'ipopt.mumps_pivtolmax': 0.1,
+                'ipopt.warm_start_init_point': 'yes',
+                'ipopt.warm_start_bound_push': 1e-8,
+                'ipopt.warm_start_mult_bound_push': 1e-8,
+                'ipopt.least_square_init_primal': 'yes',
+            }
+            solver_cont = cs.nlpsol(f'solver_bc_{int(w_bc_val)}', 'ipopt', nlp_cont, opts_cont)
+            sol_cont = solver_cont(x0=w_cur, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg)
+            w_cur = np.array(sol_cont['x']).flatten()
+            s_cont = solver_cont.stats()
+
+            x0_err = np.degrees(np.abs(w_cur[1+2] - x0_val[2]))
+            xf_err = np.degrees(np.abs(w_cur[1+N*nx+2] - xf_val[2]))
+            print(f"  w_bc={w_bc_val:.0e}: {s_cont['return_status']}, "
+                  f"iters={s_cont['iter_count']}, x0_err={x0_err:.1f}°, xf_err={xf_err:.1f}°")
+
+            if s_cont['return_status'] not in ['Solve_Succeeded', 'Solved_To_Acceptable_Level']:
+                break
+
+        w_sol = w_cur
+        s_final = s_cont
+        solve_time = _time.time() - total_start
+
         tf_sol = float(w_sol[0])
-        cost_sol = float(sol['f'])
+        cost_sol = float(sol_cont['f'])
 
         # Parse state trajectory
         idx = 1  # skip Tf
@@ -618,8 +930,13 @@ class TailsitterTrajectoryOptimizer:
         time_vec = np.linspace(0, tf_sol, N + 1)
 
         # Check solver status
-        status = self._solver.stats()
-        success = status['return_status'] in ['Solve_Succeeded', 'Solved_To_Acceptable_Level']
+        success = s_final['return_status'] in ['Solve_Succeeded', 'Solved_To_Acceptable_Level']
+
+        # Report boundary errors
+        x0_err = X_sol[0] - x0_val
+        xf_err = X_sol[N] - xf_val
+        print(f"  x0 theta err: {np.degrees(x0_err[2]):.2f}°, "
+              f"xf theta err: {np.degrees(xf_err[2]):.2f}°")
 
         return TrajectoryResult(
             time=time_vec,
@@ -649,24 +966,34 @@ class TailsitterTrajectoryOptimizer:
         nx = 11
         nu = 3
 
-        # Set boundary condition values
+        # Set boundary condition target values
+        lbw = self._lbw.copy()
+        ubw = self._ubw.copy()
         lbg = self._lbg.copy()
         ubg = self._ubg.copy()
 
-        if cfg.direction == "forward2hover":
+        if cfg.auto_trim:
+            x0_val = self._find_trim(cfg.trim_V_forward)
+            xf_val = self._find_trim(cfg.trim_V_hover, target_theta=np.pi/2)
+            if cfg.direction == "hover2forward":
+                x0_val, xf_val = xf_val, x0_val
+        elif cfg.direction == "forward2hover":
             x0_val = cfg.x0_forward
             xf_val = cfg.xf_hover
         else:
             x0_val = cfg.xf_hover
             xf_val = cfg.x0_forward
 
-        lbg[:nx] = x0_val
-        ubg[:nx] = x0_val
-        lbg[nx:2*nx] = xf_val
-        ubg[nx:2*nx] = xf_val
+        # Fix boundary targets (lb=ub=value)
+        idx0 = self._x0_target_idx
+        idxf = self._xf_target_idx
+        lbw[idx0:idx0+nx] = x0_val
+        ubw[idx0:idx0+nx] = x0_val
+        lbw[idxf:idxf+nx] = xf_val
+        ubw[idxf:idxf+nx] = xf_val
 
         t_start = _time.time()
-        sol = self._solver(x0=w0, lbx=self._lbw, ubx=self._ubw,
+        sol = self._solver(x0=w0, lbx=lbw, ubx=ubw,
                            lbg=lbg, ubg=ubg)
         solve_time = _time.time() - t_start
 
@@ -701,12 +1028,16 @@ class TailsitterTrajectoryOptimizer:
         )
 
     @staticmethod
-    def resample_solution(result: TrajectoryResult, N_new: int) -> np.ndarray:
+    def resample_solution(
+        result: TrajectoryResult, N_new: int,
+        collocation_degree: int = 1,
+    ) -> np.ndarray:
         """Resample a trajectory result onto a new mesh for warm-starting.
 
         Args:
             result: Coarse trajectory result.
             N_new: Number of nodes in the new (fine) mesh.
+            collocation_degree: Radau degree (determines Z state count).
 
         Returns:
             w0: Initial guess vector for the fine mesh.
@@ -714,6 +1045,7 @@ class TailsitterTrajectoryOptimizer:
         N_old = result.state.shape[0] - 1
         nx = result.state.shape[1]
         nu = result.control.shape[1]
+        d = collocation_degree
 
         # Normalized time for old and new meshes
         t_old = np.linspace(0, 1, N_old + 1)
@@ -721,7 +1053,7 @@ class TailsitterTrajectoryOptimizer:
 
         w0 = [result.tf]  # Tf guess
 
-        # Resample states
+        # Resample states at mesh nodes
         for j in range(nx):
             x_interp = np.interp(t_new, t_old, result.state[:, j])
             w0.extend(x_interp.tolist())
@@ -732,5 +1064,21 @@ class TailsitterTrajectoryOptimizer:
         for j in range(nu):
             u_interp = np.interp(t_ctrl_new, t_ctrl_old, result.control[:, j])
             w0.extend(u_interp.tolist())
+
+        # Boundary target variables (use first and last states)
+        w0.extend(result.state[0, :].tolist())
+        w0.extend(result.state[-1, :].tolist())
+
+        # Interior collocation states (d >= 2)
+        if d >= 2:
+            tau_root = [0] + list(cs.collocation_points(d, 'radau'))
+            for k in range(N_new):
+                s_k = k / N_new
+                s_k1 = (k + 1) / N_new
+                for j in range(1, d + 1):
+                    s_j = s_k + tau_root[j] * (s_k1 - s_k)
+                    zj = np.array([np.interp(s_j, t_old, result.state[:, i])
+                                   for i in range(nx)])
+                    w0.extend(zj.tolist())
 
         return np.array(w0, dtype=np.float64)

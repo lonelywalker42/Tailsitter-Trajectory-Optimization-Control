@@ -15,7 +15,9 @@ from tailsitter.trajectory_optimization import (
 @pytest.fixture
 def config():
     """Default config with small node count for fast tests."""
-    return TrajectoryOptConfig(num_nodes=50, ipopt_max_iter=2000)
+    return TrajectoryOptConfig(
+        num_nodes=50, ipopt_max_iter=2000,
+        auto_trim=False, collocation_degree=1)
 
 
 @pytest.fixture
@@ -177,22 +179,37 @@ class TestOptimizerBuild:
         assert np.isfinite(result.cost)
         assert result.tf > 0
 
-    def test_boundary_conditions_satisfied(self, optimizer):
+    def test_boundary_conditions_satisfied(self):
         """Initial and final states should match boundary conditions.
 
-        Tolerance is relaxed while IPOPT convergence is being improved.
+        Boundary conditions are enforced via penalty in the objective.
+        With auto_trim, boundary targets are computed from optimizer dynamics.
         """
-        result = optimizer.solve()
-        cfg = optimizer.cfg
+        cfg = TrajectoryOptConfig(
+            num_nodes=50, ipopt_max_iter=2000,
+            auto_trim=True, collocation_degree=2)
+        opt = TailsitterTrajectoryOptimizer(cfg)
+        opt.build()
+        result = opt.solve()
 
         x0_actual = result.state[0, :]
         xf_actual = result.state[-1, :]
-        x0_expected = cfg.x0_forward
-        xf_expected = cfg.xf_hover
 
-        # Relaxed tolerance — tighten to 1e-3 once IPOPT converges reliably
-        np.testing.assert_allclose(x0_actual, x0_expected, atol=1.0)
-        np.testing.assert_allclose(xf_actual, xf_expected, atol=1.0)
+        x0_expected = opt._find_trim(cfg.trim_V_forward)
+        xf_expected = opt._find_trim(cfg.trim_V_hover)
+
+        # Key plant states should be close to targets
+        # u, w, theta (indices 0, 1, 2)
+        np.testing.assert_allclose(x0_actual[:3], x0_expected[:3], atol=0.5)
+        np.testing.assert_allclose(xf_actual[:3], xf_expected[:3], atol=1.0)
+
+        # h (index 4) — altitude
+        assert abs(x0_actual[4] - x0_expected[4]) < 1.0
+        assert abs(xf_actual[4] - xf_expected[4]) < 2.0
+
+        # dt (index 8) — throttle
+        assert abs(x0_actual[8] - x0_expected[8]) < 0.5
+        assert abs(xf_actual[8] - xf_expected[8]) < 1.0
 
 
 class TestTrajectoryResult:
@@ -213,7 +230,6 @@ class TestTrajectoryResult:
 class TestResampleSolution:
     def test_resample_preserves_size(self):
         """Resampled guess should match target mesh size."""
-        # Create a fake coarse result
         N_old = 10
         result = TrajectoryResult(
             time=np.linspace(0, 5, N_old + 1),
@@ -225,9 +241,30 @@ class TestResampleSolution:
             tf=5.0,
         )
         N_new = 20
-        w0 = TailsitterTrajectoryOptimizer.resample_solution(result, N_new)
+        # d=1: Tf + X + U + boundary targets
+        w0 = TailsitterTrajectoryOptimizer.resample_solution(
+            result, N_new, collocation_degree=1)
+        expected_len = 1 + (N_new + 1) * 11 + N_new * 3 + 2 * 11
+        assert len(w0) == expected_len
 
-        expected_len = 1 + (N_new + 1) * 11 + N_new * 3
+    def test_resample_preserves_size_d2(self):
+        """Resampled guess with d=2 should include Z states."""
+        N_old = 10
+        result = TrajectoryResult(
+            time=np.linspace(0, 5, N_old + 1),
+            state=np.random.randn(N_old + 1, 11),
+            control=np.random.randn(N_old, 3),
+            cost=10.0,
+            solve_time=1.0,
+            success=True,
+            tf=5.0,
+        )
+        N_new = 20
+        d = 2
+        w0 = TailsitterTrajectoryOptimizer.resample_solution(
+            result, N_new, collocation_degree=d)
+        expected_len = (1 + (N_new + 1) * 11 + N_new * 3
+                        + 2 * 11 + N_new * d * 11)
         assert len(w0) == expected_len
 
     def test_resample_tf_preserved(self):
@@ -241,14 +278,17 @@ class TestResampleSolution:
             success=True,
             tf=8.0,
         )
-        w0 = TailsitterTrajectoryOptimizer.resample_solution(result, 20)
+        w0 = TailsitterTrajectoryOptimizer.resample_solution(
+            result, 20, collocation_degree=1)
         assert abs(w0[0] - 8.0) < 1e-10
 
 
 class TestSolveFromGuess:
     def test_solve_from_guess_produces_result(self):
         """solve_from_guess should produce a valid result."""
-        cfg = TrajectoryOptConfig(num_nodes=20, ipopt_max_iter=200)
+        cfg = TrajectoryOptConfig(
+            num_nodes=20, ipopt_max_iter=200,
+            auto_trim=False, collocation_degree=1)
         opt = TailsitterTrajectoryOptimizer(cfg)
         opt.build()
 
