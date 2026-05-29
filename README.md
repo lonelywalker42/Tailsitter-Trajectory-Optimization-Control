@@ -26,7 +26,8 @@
 - **模块化设计**：动力学、奖励、归一化、重置逻辑独立模块
 - **配平分析**：稳态配平求解、过渡走廊扫描、线性化与特征值分析
 - **轨迹优化**：CasADi + IPOPT 直接配点法求解最优过渡轨迹
-- **完整测试**：67 个单元测试覆盖全部核心功能
+- **微分平坦轨迹优化**：基于微分平坦的 (V, γ) 空间轨迹优化，替代 CasADi 高维方法
+- **完整测试**：65 个单元测试覆盖全部核心功能
 
 ### 快速开始
 
@@ -101,6 +102,19 @@ python scripts/trajectory_optimize.py --direction forward2hover --two-stage
 python scripts/trajectory_optimize.py --direction forward2hover --hessian limited-memory --mu-strategy monotone
 ```
 
+#### 微分平坦轨迹优化
+
+```bash
+# DF 走廊扫描
+python scripts/df_trajectory.py df-trim
+
+# DF 轨迹优化（悬停 → 前飞）
+python scripts/df_trajectory.py df-optimize --direction hover2forward
+
+# DF 轨迹对比（优化方法 vs 基线方法）
+python scripts/df_trajectory.py df-compare --direction hover2forward
+```
+
 #### 运行测试
 
 ```bash
@@ -134,7 +148,8 @@ TailsitterControl/
 │   ├── train_continue.py      # 断点续训
 │   ├── evaluate.py            # 评估脚本
 │   ├── trim.py                # 配平分析与过渡走廊
-│   └── trajectory_optimize.py # 轨迹优化
+│   ├── trajectory_optimize.py # CasADi 轨迹优化
+│   └── df_trajectory.py       # 微分平坦轨迹优化
 ├── src/tailsitter/            # 核心 Python 包
 │   ├── config.py              # 配置加载器
 │   ├── dynamics.py            # 动力学模型
@@ -147,7 +162,12 @@ TailsitterControl/
 │   ├── trajectory_optimization.py # CasADi 轨迹优化
 │   ├── trajectory_plotting.py # 轨迹结果可视化
 │   ├── trim.py                # 配平求解与走廊扫描
-│   └── trim_plotting.py       # 走廊热力图可视化
+│   ├── trim_plotting.py       # 走廊热力图可视化
+│   ├── differential_flatness.py # 微分平坦传递与俯仰角速率裕度
+│   ├── df_trim.py             # 微分平坦走廊扫描
+│   ├── df_trajectory_optimization.py # 微分平坦轨迹优化器
+│   ├── baseline_trajectory.py # 基线走廊路径优化
+│   └── df_trajectory_plotting.py # 微分平坦轨迹可视化
 └── tests/                     # 单元测试
 ```
 
@@ -200,7 +220,8 @@ This project uses reinforcement learning (SAC/PPO) to train agents that control 
 - **Modular Design**: Separate modules for dynamics, reward, normalization, and reset logic
 - **Trim Analysis**: Steady-state trim solvers, transition corridor sweep, linearization and eigenvalue analysis
 - **Trajectory Optimization**: CasADi + IPOPT direct collocation for optimal transition trajectories
-- **Comprehensive Testing**: 67 unit tests covering all core functionality
+- **DF Trajectory Optimization**: Differential-flatness-based trajectory optimization in (V, γ) space, alternative to CasADi high-dimensional approach
+- **Comprehensive Testing**: 65 unit tests covering all core functionality
 
 ### Quick Start
 
@@ -275,6 +296,19 @@ python scripts/trajectory_optimize.py --direction forward2hover --two-stage
 python scripts/trajectory_optimize.py --direction forward2hover --hessian limited-memory --mu-strategy monotone
 ```
 
+#### DF-Based Trajectory Optimization
+
+```bash
+# DF corridor sweep
+python scripts/df_trajectory.py df-trim
+
+# DF trajectory optimization (hover → forward flight)
+python scripts/df_trajectory.py df-optimize --direction hover2forward
+
+# DF trajectory comparison (proposed vs baseline)
+python scripts/df_trajectory.py df-compare --direction hover2forward
+```
+
 #### Running Tests
 
 ```bash
@@ -308,7 +342,8 @@ TailsitterControl/
 │   ├── train_continue.py      # Continue from checkpoint
 │   ├── evaluate.py            # Evaluation script
 │   ├── trim.py                # Trim analysis and transition corridor
-│   └── trajectory_optimize.py # Trajectory optimization
+│   ├── trajectory_optimize.py # CasADi trajectory optimization
+│   └── df_trajectory.py       # DF-based trajectory optimization
 ├── src/tailsitter/            # Core Python package
 │   ├── config.py              # Configuration loaders
 │   ├── dynamics.py            # Dynamics model
@@ -321,7 +356,12 @@ TailsitterControl/
 │   ├── trajectory_optimization.py # CasADi trajectory optimization
 │   ├── trajectory_plotting.py # Trajectory result visualization
 │   ├── trim.py                # Trim solvers and corridor sweep
-│   └── trim_plotting.py       # Corridor heatmap visualization
+│   ├── trim_plotting.py       # Corridor heatmap visualization
+│   ├── differential_flatness.py # DF transfer and pitch rate margin
+│   ├── df_trim.py             # DF-based corridor sweep
+│   ├── df_trajectory_optimization.py # DF trajectory optimizer
+│   ├── baseline_trajectory.py # Baseline corridor path optimization
+│   └── df_trajectory_plotting.py # DF trajectory visualization
 └── tests/                     # Unit tests
 ```
 

@@ -16,6 +16,13 @@ All notable changes to this project will be documented in this file.
 - **Trajectory CLI**: `scripts/trajectory_optimize.py` — command-line entry point for trajectory optimization
 - **Trajectory Tests**: `tests/test_trajectory_optimization.py` — unit tests for config, interpolants, collocation coefficients, dynamics, and NLP construction
 - **CasADi Dependency**: Added `casadi>=3.6` to `pyproject.toml` and `requirements.txt`
+- **Differential Flatness**: `src/tailsitter/differential_flatness.py` — DF transfer (Newton iteration on alpha, force/moment solve), sin4 sinusoidal aero model with analytical derivatives, and pitch rate margin calculation. Refactored from `matlab/analysis/controller/DifferentialTransfer.m`
+- **DF Corridor Sweep**: `src/tailsitter/df_trim.py` — DF-based corridor sweep over (V, gamma) grid with max feasible pitch rate computation. Refactored from `matlab/analysis/controller/df_trim.m`
+- **DF Trajectory Optimization**: `src/tailsitter/df_trajectory_optimization.py` — DF trajectory optimizer using scipy.optimize with (dt, dgamma) decision variables along velocity grid. Refactored from `matlab/analysis/controller/trajectory_plan.m`
+- **Baseline Trajectory**: `src/tailsitter/baseline_trajectory.py` — baseline corridor path optimization maximizing distance from boundary using control point optimization. Refactored from `matlab/analysis/controller/trajectory_compare.m`
+- **DF Trajectory Plotting**: `src/tailsitter/df_trajectory_plotting.py` — DF trajectory (3x3 subplot), corridor heatmaps, simulation comparison, trajectory comparison on corridor, and multi-corridor 3D surface visualization. Refactored from `matlab/analysis/controller/visualize_*.m`
+- **DF Trajectory CLI**: `scripts/df_trajectory.py` — command-line entry point with `df-trim`, `df-optimize`, `df-baseline`, and `df-compare` subcommands
+- **DF Tests**: `tests/test_differential_flatness.py` and `tests/test_df_trim.py` — 23 unit tests covering sin4 fitting/evaluation, DF transfer at various flight conditions, pitch rate margin, corridor sweep, and save/load round-trip
 
 ### Fixed
 

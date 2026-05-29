@@ -273,6 +273,92 @@ Results are saved to `results/trajopt/` as:
 
 The trajectory optimizer with induced velocity dynamics may not fully satisfy boundary conditions. The optimizer converges (IPOPT reports "Optimal Solution Found") but terminal states may deviate from targets. This is due to the stiff, nonlinear nature of the induced velocity dynamics model, not a solver configuration issue. See `docs/architecture.md` for detailed analysis.
 
+## DF-Based Trajectory Optimization
+
+An alternative trajectory optimization approach using differential flatness. Instead of optimizing in the full 11D state space, this operates in the 2D flat output space (V, γ), which is more robust and faster.
+
+### DF Corridor Sweep
+
+Compute the DF-based transition corridor:
+
+```bash
+python scripts/df_trajectory.py df-trim
+
+# Custom grid
+python scripts/df_trajectory.py df-trim --v-min 0 --v-max 20 --dv 0.5 --dgamma 1
+```
+
+Generates 6 heatmap plots: α, θ, q, thrust, elevator, and q_max over the (V, γ) corridor.
+
+### DF Trajectory Optimization
+
+Find optimal transition trajectories using the DF approach:
+
+```bash
+# Hover → forward flight
+python scripts/df_trajectory.py df-optimize --direction hover2forward
+
+# Forward flight → hover
+python scripts/df_trajectory.py df-optimize --direction forward2hover
+
+# Custom weights
+python scripts/df_trajectory.py df-optimize --w-time 0.2 --w-safety 0.3
+
+# Custom velocity grid resolution
+python scripts/df_trajectory.py df-optimize --dv 0.5
+```
+
+Output includes:
+- 3×3 subplot: trajectory, V, γ, α/θ, V̇, γ̇, q, throttle, elevator
+- `.npz` file with all trajectory data
+
+### Baseline Corridor Path
+
+Compute the baseline geometric path within the feasibility corridor:
+
+```bash
+python scripts/df_trajectory.py df-baseline --direction hover2forward
+
+# Custom control points
+python scripts/df_trajectory.py df-baseline --n-points 20
+```
+
+### Trajectory Comparison
+
+Run both proposed (DF optimization) and baseline (corridor path) and generate comparison:
+
+```bash
+python scripts/df_trajectory.py df-compare --direction hover2forward
+```
+
+Generates:
+- DF trajectory plot (3×3 subplot)
+- Comparison plot: both trajectories on the corridor feasibility map with pitch rate margin background
+
+### DF CLI Arguments
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--config` | `aero_cfg2` | Aero configuration name |
+| `--output-dir` | `results/df_trajectory` | Output directory |
+| `--dv` | `1.0` | Velocity grid step [m/s] |
+| `--dgamma` | `1.0` | FPA grid step [deg] |
+| `--w-time` | `0.1` | Time cost weight |
+| `--w-energy` | `0.1` | Control energy weight |
+| `--w-safety` | `0.1` | Pitch rate safety margin weight |
+| `--margin-k` | `2.0` | Pitch rate margin proportionality coefficient |
+
+### DF vs CasADi Comparison
+
+| Aspect | DF Approach | CasADi Approach |
+|--------|-------------|-----------------|
+| State space | 2D (V, γ) | 11D (full dynamics) |
+| Solver | scipy trust-constr | IPOPT |
+| Speed | Fast (~seconds) | Slow (~minutes) |
+| Robustness | More robust | Sensitive to initial guess |
+| Dynamics fidelity | Flatness transfer | Full 5-DOF with induced velocity |
+| Best for | Quick exploration, corridor analysis | High-fidelity trajectory design |
+
 ## Troubleshooting
 
 ### ModuleNotFoundError: No module named 'tailsitter'

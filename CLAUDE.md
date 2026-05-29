@@ -53,6 +53,15 @@ python scripts/trajectory_optimize.py --direction forward2hover --hessian limite
 # Trajectory optimization with hardcoded boundary conditions
 python scripts/trajectory_optimize.py --direction forward2hover --no-auto-trim
 
+# DF-based corridor sweep
+python scripts/df_trajectory.py df-trim
+
+# DF-based trajectory optimization
+python scripts/df_trajectory.py df-optimize --direction hover2forward
+
+# DF-based trajectory comparison (proposed vs baseline)
+python scripts/df_trajectory.py df-compare --direction hover2forward
+
 # Run tests
 python -m pytest tests/ -v
 
@@ -137,7 +146,8 @@ TailsitterControl/
 │   ├── train_continue.py      # Continue from checkpoint
 │   ├── evaluate.py            # Test trained agent
 │   ├── trajectory_optimize.py # CasADi trajectory optimization
-│   └── trim.py                # Trim analysis and transition corridor
+│   ├── trim.py                # Trim analysis and transition corridor
+│   └── df_trajectory.py       # DF-based trajectory optimization
 ├── src/tailsitter/            # Core Python package
 │   ├── config.py              # YAML config loaders, dataclasses
 │   ├── dynamics.py            # 5-DOF longitudinal dynamics
@@ -150,13 +160,20 @@ TailsitterControl/
 │   ├── trajectory_optimization.py # CasADi trajectory optimization
 │   ├── trajectory_plotting.py # Trajectory result visualization
 │   ├── trim.py                # Trim solvers and corridor sweep
-│   └── trim_plotting.py       # Trim corridor visualization
+│   ├── trim_plotting.py       # Trim corridor visualization
+│   ├── differential_flatness.py # DF transfer and pitch rate margin
+│   ├── df_trim.py             # DF-based corridor sweep
+│   ├── df_trajectory_optimization.py # DF trajectory optimizer
+│   ├── baseline_trajectory.py # Baseline corridor path optimization
+│   └── df_trajectory_plotting.py # DF trajectory visualization
 └── tests/                     # Unit tests
     ├── test_env.py
     ├── test_normalization.py
     ├── test_reward.py
     ├── test_trim.py
-    └── test_trajectory_optimization.py
+    ├── test_trajectory_optimization.py
+    ├── test_differential_flatness.py
+    └── test_df_trim.py
 ```
 
 ### Core Modules (`src/tailsitter/`)
@@ -173,6 +190,11 @@ TailsitterControl/
 - `trim_plotting.py` — Corridor and eigenvalue heatmap visualization
 - `trajectory_optimization.py` — CasADi + IPOPT trajectory optimization with auto-trim, penalty BCs, continuation
 - `trajectory_plotting.py` — Trajectory result visualization
+- `differential_flatness.py` — DF transfer (Newton iteration on alpha, force/moment solve), sin4 aero model, pitch rate margin (refactored from `matlab/analysis/controller/DifferentialTransfer.m`)
+- `df_trim.py` — DF-based corridor sweep over (V, gamma) grid (refactored from `matlab/analysis/controller/df_trim.m`)
+- `df_trajectory_optimization.py` — DF trajectory optimizer using scipy.optimize with (dt, dgamma) decision variables (refactored from `matlab/analysis/controller/trajectory_plan.m`)
+- `baseline_trajectory.py` — Baseline corridor path optimization maximizing distance from boundary (refactored from `matlab/analysis/controller/trajectory_compare.m`)
+- `df_trajectory_plotting.py` — DF trajectory, corridor, and comparison visualization (refactored from `matlab/analysis/controller/visualize_*.m`)
 
 ### State Space
 

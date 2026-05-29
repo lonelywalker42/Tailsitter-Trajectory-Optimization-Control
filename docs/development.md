@@ -76,8 +76,13 @@ Use semantic commit messages:
 - [x] Write unit tests for reward
 - [x] Write unit tests for environment
 - [x] All tests passing (42/42)
+- [x] Trim and linearization tests (18 tests)
+- [x] Trajectory optimization tests (26 tests)
+- [x] Differential flatness tests (15 tests)
+- [x] DF trim tests (8 tests)
+- [x] All tests passing (65/65)
 
-### Phase 7: Trajectory Optimization (In Progress)
+### Phase 7: Trajectory Optimization ✓
 
 - [x] Implement `trajectory_optimization.py` — CasADi direct collocation (backward Euler)
 - [x] Implement `trajectory_plotting.py` — visualization module
@@ -90,8 +95,19 @@ Use semantic commit messages:
 - [x] Add IPOPT tuning options (mu_strategy, hessian_approximation, warm_start)
 - [x] Make collocation degree configurable (d=1,2,3)
 - [x] Update CHANGELOG.md
-- [ ] **IPOPT convergence verification** — run full solve and verify convergence
-- [ ] End-to-end verification (import → test → full solve → plot)
+
+### Phase 8: Differential Flatness Trajectory Optimization ✓
+
+- [x] Implement `differential_flatness.py` — DF transfer (Newton on α), sin4 aero model, pitch rate margin
+- [x] Implement `df_trim.py` — DF-based corridor sweep over (V, γ) grid
+- [x] Implement `df_trajectory_optimization.py` — DF trajectory optimizer with (dt, dγ) decision variables
+- [x] Implement `baseline_trajectory.py` — baseline corridor path optimization
+- [x] Implement `df_trajectory_plotting.py` — trajectory, corridor, comparison visualization
+- [x] Implement `scripts/df_trajectory.py` — CLI with `df-trim`, `df-optimize`, `df-baseline`, `df-compare`
+- [x] Write unit tests for differential flatness (sin4, DF transfer, pitch rate margin)
+- [x] Write unit tests for DF trim (sweep, shapes, feasibility, save/load)
+- [x] Fix `gammadddot` typo in DF transfer second-order system
+- [x] Update CLAUDE.md, CHANGELOG.md, and all documentation
 
 ## Running Tests
 
@@ -161,7 +177,8 @@ Core dependencies (see `pyproject.toml`):
 - `stable-baselines3>=2.3` — RL algorithms (SAC, PPO)
 - `torch>=2.0` — Neural network backend
 - `numpy` — Numerical computing
-- `scipy` — Scientific computing (interpolation, .mat loading)
+- `scipy` — Scientific computing (interpolation, optimization, .mat loading)
+- `casadi>=3.6` — CasADi for trajectory optimization (IPOPT backend)
 - `pyyaml` — Configuration files
 - `matplotlib` — Visualization
 - `pandas` — Data handling

@@ -311,6 +311,96 @@ The induced velocity dynamics model creates stiff, nonlinear regions that make t
 
 These issues are fundamental to the induced velocity dynamics model, not solver configuration problems.
 
+## Differential Flatness Trajectory Optimization
+
+The differential flatness (DF) module provides an alternative trajectory optimization approach using the flatness property of the longitudinal dynamics. Given flat outputs (V, γ) and their derivatives, the full state and control can be recovered via algebraic computation.
+
+### Design
+
+- **Approach**: Exploits differential flatness — the longitudinal dynamics are differentially flat with flat outputs (V, γ)
+- **Optimizer**: `scipy.optimize.minimize(method='trust-constr')` with nonlinear constraints
+- **Decision variables**: `[dt_1..dt_N, dγ_1..dγ_N]` — time increments and FPA increments along a velocity grid
+- **Objective**: Weighted sum of time, height change, control energy, pitch rate safety margin, and smoothness
+- **Constraints**: Gamma rate bounds, alpha bounds, pitch rate limits, throttle non-negativity, terminal gamma
+
+### Architecture
+
+| Module | File | Description |
+|--------|------|-------------|
+| DF Transfer | `differential_flatness.py` | Newton iteration on α, force/moment solve, elevator inverse lookup |
+| Sin4 Model | `differential_flatness.py` | `∑ aᵢ·sin(bᵢ·α + cᵢ)` with analytical 1st/2nd derivatives |
+| Pitch Rate Margin | `differential_flatness.py` | Max feasible pitch rate from control margin and effectiveness |
+| DF Corridor | `df_trim.py` | (V, γ) grid sweep with feasibility flags |
+| DF Optimizer | `df_trajectory_optimization.py` | (dt, dγ) optimization along velocity grid |
+| Baseline Path | `baseline_trajectory.py` | Geometric path optimization maximizing boundary distance |
+| DF Plotting | `df_trajectory_plotting.py` | Trajectory, corridor, comparison visualization |
+
+### DF Transfer Algorithm
+
+The core algorithm (`differential_flatness_transfer()`) solves for the full state given flat outputs:
+
+1. **Newton iteration on α**: Solves `f(α) = m·(V̇·sinα - V·γ̇·cosα + g·sinγ·sinα - g·cosγ·cosα) + q_dyn·cz(α) = 0`
+2. **Theta**: `θ = γ + α`
+3. **Thrust**: From force equilibrium (special case at α=90°)
+4. **Pitch rate q, Ṫ**: From 2×2 linear system (force balance derivatives)
+5. **q̈, T̈**: From another 2×2 linear system (second-order balance)
+6. **Elevator**: From external moment via induced velocity model + inverse lookup `interp(dcm, ele, dcm_d)`
+
+Convergence: tolerance=2e-3, max_iter=50, initial guess α=0.
+
+### Sinusoidal Aero Model (sin4)
+
+The sin4 model provides analytical derivatives needed for Newton iteration:
+
+```
+f(α_deg) = ∑ᵢ₌₁⁴ aᵢ·sin(bᵢ·α_deg + cᵢ)
+```
+
+Each coefficient array is 12-dimensional: `[a₁,b₁,c₁, a₂,b₂,c₂, a₃,b₃,c₃, a₄,b₄,c₄]`. Derivatives w.r.t. α in radians include a `*57.3` chain rule factor.
+
+### DF Trajectory Optimization
+
+The DF optimizer (`df_trajectory_optimize()`) finds optimal transitions in (V, γ) space:
+
+- **Velocity grid**: Evenly spaced from V_start to V_end with step `dv` (default 1 m/s)
+- **Decision variables**: `x = [dt₁..dt_N, dγ₁..dγ_N]` (2N variables)
+- **Objective**: `J = w_time·T + w_height·‖h‖² + w_energy·‖T‖² - w_safety·‖q-q_max‖² + λ·smoothness`
+- **Smoothness**: Angle between consecutive path segments in normalized (V/16, γ/90) space
+- **Constraints**: γ̇ bounds, α bounds, |q| ≤ q_max, throttle ≥ 0, terminal γ
+
+### Baseline Path Optimization
+
+The baseline method (`optimize_baseline_path()`) finds a geometric corridor path:
+
+1. Extract corridor boundary via contour at 0.5 level
+2. Initialize control points along straight line, adjusting to feasible region
+3. Optimize internal control points to maximize distance from boundary
+4. Interpolate trim data (θ, α, T, δe, q_max) along optimal path
+
+### Pitch Rate Margin
+
+The max feasible pitch rate is computed from:
+
+```
+q_max = τ · (M_δe · η) / Jy
+```
+
+Where:
+- `τ`: Correction time constant (clamped to [τ_min, τ_max])
+- `M_δe`: Elevator control effectiveness (from induced velocity model)
+- `η`: Control margin (min distance to elevator limits)
+
+### Comparison: CasADi vs DF
+
+| Aspect | CasADi (trajectory_optimization.py) | DF (df_trajectory_optimization.py) |
+|--------|-------------------------------------|-------------------------------------|
+| State space | 11D (full dynamics) | 2D flat outputs (V, γ) |
+| Solver | IPOPT (interior point) | scipy trust-constr |
+| Collocation | Radau (d=1,2,3) | Direct transcription |
+| Dynamics | Full 5-DOF with induced velocity | Differential flatness transfer |
+| Convergence | Sensitive to initial guess | More robust (lower dimensional) |
+| Speed | Slower (large NLP) | Faster (small NLP) |
+
 ## Trim Analysis
 
 The trim module (`trim.py`) finds equilibrium points across the flight envelope by solving force/moment balance equations. Refactored from `matlab/trim/`.
