@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Visualization Style Overhaul**: Updated all plotting modules to match MATLAB SCI journal style — increased font sizes (titles 14pt, labels 12pt, ticks 10pt), added `box on` frame borders to all axes, switched corridor heatmaps from turbo to jet colormap, changed feasibility boundary from black dashed to red solid, and added data-dependent LaTeX titles to corridor heatmaps
+- **New Visualization**: `plot_transition_strategy()` — dual 2×3 window comparison of proposed vs baseline trajectories (basic states + rates/controls with q safety margin area plots), ported from `matlab/analysis/controller/visualize_transition_strategy.m`
+- **New Visualization**: `plot_simulation_comprehensive()` — 3×3 subplot with V, γ, θ, α, q, h, throttle, elevator, V-γ phase plane, ported from `matlab/analysis/controller/visualize_simulation_compare_results.m`
+- **New Data Class**: `TrajectoryData` container and `_build_trajectory_data()` helper for converting DFTrajectoryResult/BaselineTrajectoryResult to unified format for strategy comparison
+- **Performance Report**: `_compute_performance_report()` generates text-based comparison with 14+ metrics and composite scoring, saved as `.txt` alongside strategy plots
+
 ### Added
 
 - **Trim Analysis**: `src/tailsitter/trim.py` — trim solvers and transition corridor sweep, refactored from `matlab/trim/`. Includes level flight trim, general trim with random restarts (SLSQP), and max-residual-moment optimization with force constraints

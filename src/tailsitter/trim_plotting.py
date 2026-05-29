@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
 
-from .plotting import _sci_style, COLORS
+from .plotting import _sci_style, _box_on, COLORS
 from .trim import TrimMesh
 
 
@@ -129,7 +129,7 @@ def _plot_corridor_boundary(X, Y, trim_grid, save_dir, filename) -> str:
         ax.set_title("Transition Corridor")
         ax.set_xlim([0, 20])
         ax.set_ylim([0, 90])
-        ax.set_axisbelow(True)
+        _box_on(ax)
 
         path = save_dir / f"{filename}.png"
         fig.savefig(path, bbox_inches="tight", dpi=300)
@@ -145,17 +145,17 @@ def _plot_heatmap(trimmesh: TrimMesh, data_grid: np.ndarray,
     with _sci_style():
         fig, ax = plt.subplots(figsize=(5.5, 3.5))
 
-        cmap = plt.cm.turbo.copy()
+        cmap = plt.cm.jet.copy()
         cmap.set_bad(color='white')
 
         masked = np.ma.masked_invalid(data_grid)
         im = ax.pcolormesh(trimmesh.trim_V, trimmesh.trim_theta, masked,
                            cmap=cmap, shading='auto')
 
-        # Overlay corridor boundary
+        # Overlay corridor boundary (red solid, matching MATLAB)
         X, Y = np.meshgrid(trimmesh.trim_V, trimmesh.trim_theta)
-        ax.contour(X, Y, trim_grid, levels=[0.5], linewidths=1.0,
-                   colors='k', linestyles='--')
+        ax.contour(X, Y, trim_grid, levels=[0.5], linewidths=1.5,
+                   colors='r')
 
         cbar = fig.colorbar(im, ax=ax)
         cbar.set_label(cbar_label, fontsize=10)
@@ -166,6 +166,7 @@ def _plot_heatmap(trimmesh: TrimMesh, data_grid: np.ndarray,
             ax.set_title(title)
         ax.set_xlim([0, 20])
         ax.set_ylim([0, 90])
+        _box_on(ax)
 
         path = save_dir / f"{filename}.png"
         fig.savefig(path, bbox_inches="tight", dpi=300)
@@ -207,7 +208,7 @@ def plot_level_flight(trim_result: dict, save_dir: str | Path) -> list[str]:
         ax.set_xlabel(r"$V$ [m/s]")
         ax.set_ylabel(r"$\theta$ [deg]")
         ax.set_title("Level Flight Trim: Pitch Angle")
-        ax.set_axisbelow(True)
+        _box_on(ax)
         path = save_dir / "level_flight_theta.png"
         fig.savefig(path, bbox_inches="tight", dpi=300)
         plt.close(fig)
@@ -221,7 +222,7 @@ def plot_level_flight(trim_result: dict, save_dir: str | Path) -> list[str]:
         ax.set_xlabel(r"$V$ [m/s]")
         ax.set_ylabel(r"$\delta_e$ [deg]")
         ax.set_title("Level Flight Trim: Elevator")
-        ax.set_axisbelow(True)
+        _box_on(ax)
         path = save_dir / "level_flight_elevator.png"
         fig.savefig(path, bbox_inches="tight", dpi=300)
         plt.close(fig)
@@ -235,7 +236,7 @@ def plot_level_flight(trim_result: dict, save_dir: str | Path) -> list[str]:
         ax.set_xlabel(r"$V$ [m/s]")
         ax.set_ylabel(r"$\delta_t$")
         ax.set_title("Level Flight Trim: Throttle")
-        ax.set_axisbelow(True)
+        _box_on(ax)
         path = save_dir / "level_flight_throttle.png"
         fig.savefig(path, bbox_inches="tight", dpi=300)
         plt.close(fig)

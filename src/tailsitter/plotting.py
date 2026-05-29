@@ -53,31 +53,38 @@ def _sci_style():
         {
             "font.family": "serif",
             "font.serif": ["Times New Roman", "DejaVu Serif"],
-            "font.size": 10,
-            "axes.linewidth": 0.8,
+            "font.size": 12,
+            "axes.linewidth": 1.0,
             "axes.grid": True,
             "grid.linewidth": 0.4,
-            "grid.alpha": 0.4,
+            "grid.alpha": 0.3,
             "grid.color": "#CCCCCC",
             "grid.linestyle": "--",
-            "xtick.major.width": 0.6,
-            "ytick.major.width": 0.6,
+            "xtick.major.width": 0.8,
+            "ytick.major.width": 0.8,
             "xtick.major.size": 3.0,
             "ytick.major.size": 3.0,
-            "xtick.labelsize": 8,
-            "ytick.labelsize": 8,
-            "axes.labelsize": 10,
-            "axes.titlesize": 11,
-            "legend.fontsize": 8,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
+            "axes.labelsize": 12,
+            "axes.titlesize": 14,
+            "legend.fontsize": 9,
             "figure.dpi": 150,
             "savefig.dpi": 300,
-            "lines.linewidth": 1.0,
+            "lines.linewidth": 1.5,
         }
     )
     try:
         yield
     finally:
         mpl.rcParams.update(original)
+
+
+def _box_on(ax, linewidth: float = 1.0):
+    """Apply MATLAB-style 'box on' to an axes (visible frame border)."""
+    ax.set_frame_on(True)
+    for spine in ax.spines.values():
+        spine.set_linewidth(linewidth)
 
 
 # ── Static plots ──────────────────────────────────────────────────────────────

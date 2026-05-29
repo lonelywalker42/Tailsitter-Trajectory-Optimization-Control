@@ -386,6 +386,34 @@ Output includes:
 | `--acc` | `5.0` | Baseline assumed acceleration [m/s²] |
 | `--n-points` | `16` | Number of baseline control points |
 
+### Visualization Functions
+
+The plotting module (`df_trajectory_plotting.py`) provides several visualization functions matching MATLAB SCI journal style:
+
+**Corridor heatmaps** (`plot_df_corridor`, `plot_df_corridor_suite`):
+- Jet colormap, red solid feasibility boundary, data-dependent LaTeX titles
+- Generates α, θ, q, T, δe, q_max heatmaps over the (V, γ) corridor
+
+**Trajectory 3×3** (`plot_df_trajectory`):
+- 9-panel layout: x-h trajectory, V, γ, α/θ, V̇, γ̇, q, throttle, elevator
+- Green start / red end markers, matching MATLAB color scheme
+
+**Simulation comparison** (`plot_df_simulation_comparison`):
+- 2×3 layout: actual (blue) vs reference (orange dashed) for V, γ, θ, α, q, V-γ phase
+
+**Comprehensive simulation** (`plot_simulation_comprehensive`):
+- 3×3 layout with all 9 channels (V, γ, θ, α, q, h, throttle, elevator, V-γ phase)
+- Supports overlay of baseline trajectory for side-by-side comparison
+
+**Transition strategy** (`plot_transition_strategy`):
+- Dual 2×3 windows comparing proposed vs baseline trajectories
+- Window 1: basic states (V, γ, V-γ phase, θ, α, q)
+- Window 2: rates & controls (V̇, γ̇, x-h with flight arrows, T, δe, q safety margin area plot)
+- Generates performance comparison report (`.txt`) with 14+ metrics and composite scoring
+
+**Tracking error** (`plot_tracking_error`):
+- 3×2 layout: reference vs actual with error fill and RMSE annotations for V, γ, θ, q, h, α
+
 ### DF vs CasADi Comparison
 
 | Aspect | DF Approach | CasADi Approach |

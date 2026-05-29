@@ -333,7 +333,7 @@ The differential flatness (DF) module provides an alternative trajectory optimiz
 | DF Corridor | `df_trim.py` | (V, γ) grid sweep with feasibility flags |
 | DF Optimizer | `df_trajectory_optimization.py` | (dt, dγ) optimization along velocity grid |
 | Baseline Path | `baseline_trajectory.py` | Geometric path optimization maximizing boundary distance |
-| DF Plotting | `df_trajectory_plotting.py` | Trajectory, corridor, comparison visualization |
+| DF Plotting | `df_trajectory_plotting.py` | Trajectory, corridor, comparison, transition strategy, comprehensive simulation visualization |
 
 ### DF Transfer Algorithm
 

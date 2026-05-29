@@ -117,6 +117,17 @@ Use semantic commit messages:
 - [x] Write unit tests for simulation (error analysis, grading, thrust conversion)
 - [x] Update CLAUDE.md, CHANGELOG.md, and all documentation
 
+### Phase 10: Visualization Style Alignment ✓
+
+- [x] Update `_sci_style()` font sizes to match MATLAB (titles 14pt, labels 12pt, ticks 10pt)
+- [x] Add `_box_on()` helper for MATLAB-style frame borders on all axes
+- [x] Fix corridor heatmaps: red solid feasibility boundary, jet colormap, data-dependent titles
+- [x] Fix trajectory 3×3: green start marker, magenta γ, green V̇, matching MATLAB colors
+- [x] Add `plot_transition_strategy()` — dual 2×3 window comparison with performance report
+- [x] Add `plot_simulation_comprehensive()` — 3×3 layout with all 9 channels
+- [x] Add `TrajectoryData` dataclass and `_build_trajectory_data()` helper
+- [x] Fix `trim_plotting.py` corridor boundary and colormap to match MATLAB style
+
 ## Running Tests
 
 ```bash
