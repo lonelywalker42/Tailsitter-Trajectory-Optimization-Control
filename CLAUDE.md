@@ -41,7 +41,7 @@ python scripts/trim.py corridor --v-step 1 --theta-step 5
 # Trim analysis: corridor with linearization
 python scripts/trim.py corridor --v-step 2 --theta-step 10 --linearize
 
-# Trajectory optimization
+# Trajectory optimization (default: auto-trim, d=2 collocation)
 python scripts/trajectory_optimize.py --direction hover2forward
 
 # Trajectory optimization with two-stage solve
@@ -49,6 +49,9 @@ python scripts/trajectory_optimize.py --direction forward2hover --two-stage
 
 # Trajectory optimization with L-BFGS Hessian and monotone barrier
 python scripts/trajectory_optimize.py --direction forward2hover --hessian limited-memory --mu-strategy monotone
+
+# Trajectory optimization with hardcoded boundary conditions
+python scripts/trajectory_optimize.py --direction forward2hover --no-auto-trim
 
 # Run tests
 python -m pytest tests/ -v
@@ -168,7 +171,7 @@ TailsitterControl/
 - `trim.py` — Trim solvers and transition corridor sweep (refactored from `matlab/trim/`)
 - `linearization.py` — Linearization and eigenvalue/controllability analysis (refactored from `matlab/trim/linearization/`)
 - `trim_plotting.py` — Corridor and eigenvalue heatmap visualization
-- `trajectory_optimization.py` — CasADi + IPOPT trajectory optimization
+- `trajectory_optimization.py` — CasADi + IPOPT trajectory optimization with auto-trim, penalty BCs, continuation
 - `trajectory_plotting.py` — Trajectory result visualization
 
 ### State Space

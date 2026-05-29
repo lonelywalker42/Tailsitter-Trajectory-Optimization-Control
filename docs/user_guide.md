@@ -215,7 +215,7 @@ python scripts/trim.py corridor --output-dir results/my_trim
 Find optimal transition trajectories using CasADi + IPOPT:
 
 ```bash
-# Forward flight → hover
+# Forward flight → hover (default: auto-trim, d=2 collocation)
 python scripts/trajectory_optimize.py --direction forward2hover
 
 # Hover → forward flight
@@ -230,8 +230,11 @@ python scripts/trajectory_optimize.py --direction forward2hover --two-stage
 # L-BFGS Hessian with monotone barrier strategy
 python scripts/trajectory_optimize.py --direction forward2hover --hessian limited-memory --mu-strategy monotone
 
-# Higher-order collocation (d=2)
-python scripts/trajectory_optimize.py --direction forward2hover --collocation-degree 2
+# Use hardcoded boundary conditions instead of auto-trim
+python scripts/trajectory_optimize.py --direction forward2hover --no-auto-trim
+
+# Backward Euler collocation (faster, less accurate)
+python scripts/trajectory_optimize.py --direction forward2hover --collocation-degree 1
 ```
 
 ### CLI Arguments
@@ -245,7 +248,18 @@ python scripts/trajectory_optimize.py --direction forward2hover --collocation-de
 | `--two-stage` | off | Two-stage solve: coarse → fine (warm-started) |
 | `--mu-strategy` | `adaptive` | IPOPT barrier update strategy (`adaptive` or `monotone`) |
 | `--hessian` | `exact` | Hessian approximation (`exact` or `limited-memory`) |
-| `--collocation-degree` | `1` | Radau collocation degree (1, 2, or 3) |
+| `--collocation-degree` | `2` | Radau collocation degree (1, 2, or 3) |
+| `--no-auto-trim` | off | Use hardcoded boundary conditions instead of auto-trim |
+
+### Auto-Trim Mode
+
+By default, the optimizer computes boundary conditions from its own dynamics model using `_find_trim()`. This avoids model mismatch between the trim solver and the optimizer dynamics (which include induced velocity effects). The auto-trim solver:
+
+1. Finds forward flight trim at V=20 m/s (typically θ≈58°, γ≈60° — climbing flight)
+2. Finds hover trim at V=0.01 m/s (θ=90°)
+3. Uses grid search over initial guesses to find the best equilibrium
+
+Use `--no-auto-trim` to use the original hardcoded boundary conditions from `TrajectoryOptConfig`.
 
 ### Output
 
@@ -254,6 +268,10 @@ Results are saved to `results/trajopt/` as:
 - State trajectory plot (V-θ phase portrait + time histories)
 - Control input plot (throttle, elevator rates)
 - Angle of attack plot
+
+### Known Issues
+
+The trajectory optimizer with induced velocity dynamics may not fully satisfy boundary conditions. The optimizer converges (IPOPT reports "Optimal Solution Found") but terminal states may deviate from targets. This is due to the stiff, nonlinear nature of the induced velocity dynamics model, not a solver configuration issue. See `docs/architecture.md` for detailed analysis.
 
 ## Troubleshooting
 

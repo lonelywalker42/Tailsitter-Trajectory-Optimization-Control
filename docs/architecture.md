@@ -193,10 +193,12 @@ The trajectory optimization module (`trajectory_optimization.py`) finds optimal 
 ### Design
 
 - **Solver**: CasADi `nlpsol` with IPOPT backend
-- **Collocation**: Configurable Radau degree (d=1 backward Euler, d=2, d=3); default d=1 for reliable convergence
-- **Dynamics**: 11D state (8 plant + 3 augmented controls), 3D control (rates), matching MATLAB `LonDyn.m` cfg1 tables
+- **Collocation**: Configurable Radau degree (d=1 backward Euler, d=2, d=3); default d=2 (Radau) for better accuracy
+- **Dynamics**: 11D state (8 plant + 3 augmented controls), 3D control (rates), matching MATLAB `LonDyn.m` cfg1 tables with induced velocity model (momentum theory)
 - **Aero model**: CL/CD with elevator increments (`dcL(-de)`, `dcD(-de)`), elevator sign inversion matching MATLAB
-- **Objective**: `min(tf + ∫ L(x,u) dt)` with weights matching MATLAB `UAVContinuous.m`
+- **Objective**: `min(w_tf·tf + ∫ L(x,u) dt)` with normalized weights (O(1))
+- **Boundary conditions**: Penalty-based (`w_bc * sumsqr`) with continuation (100→1e6) to avoid NLP infeasibility
+- **Auto-trim**: Boundary conditions computed from optimizer dynamics via `_find_trim()` grid search
 - **Two-stage solve**: Coarse mesh (N=20) → warm-started fine mesh via `solve_from_guess()` and `resample_solution()`
 
 ### State Vector (11D)
@@ -215,15 +217,43 @@ The trajectory optimization module (`trajectory_optimization.py`) finds optimal 
 | 9 | δe | Elevator | Aug. ctrl |
 | 10 | us | Moving mass input | Aug. ctrl |
 
+### Induced Velocity Model
+
+The optimizer dynamics include an induced velocity model based on momentum theory:
+
+```
+v_ind = sqrt(Fprop / (2·ρ·π·R²))
+q_ind = 0.5·ρ·(v_ind + V·cos(α))²
+```
+
+- Base aerodynamic forces (L, D) use freestream dynamic pressure `q0 = 0.5·ρ·V²`
+- Elevator moment uses slipstream dynamic pressure `q_ind` (higher than q0 at low speed)
+- At V=20 m/s: `q_ind/q0 ≈ 1.24` (24% increase in effective dynamic pressure)
+
+This model significantly changes the force balance compared to the RL environment's simpler dynamics (cfg2), particularly at low speeds where induced velocity dominates.
+
+### Trim Solver
+
+The `_find_trim()` method finds equilibrium points within the optimizer dynamics:
+
+1. Decision variables: `[α, θ, δt, δe]`
+2. Constraints: `udot=0, wdot=0, qdot=0` with `V=sqrt(u²+w²)=V_target`
+3. Optional penalties for flight path angle (γ=θ-α) or pitch angle (θ)
+4. Grid search over initial guesses to avoid local minima
+
+**Key finding**: With induced velocity dynamics, V=20 m/s has no level-flight (γ=0) trim. The only equilibria are climbing flight trims (e.g., γ=60°, θ=58°).
+
 ### Collocation
 
-Configurable Radau collocation degree (default d=1). For d=1 (backward Euler), the coefficient matrices are:
+Configurable Radau collocation degree (default d=2). For d=2, each interval has 2 interior collocation states (Z), adding 2·N·11 decision variables. Coefficient matrices are computed via `cs.collocation_points(d, 'radau')`.
+
+For d=1 (backward Euler), the coefficient matrices are:
 
 - `C = [[-1, -1], [1, 1]]` — derivative at collocation points
 - `D = [0, 1]` — continuity (endpoint property of Radau)
 - `B = [0.5, 0.5]` — quadrature weights
 
-Higher degrees (d=2, d=3) use more internal collocation points per interval for better accuracy, but may require L-BFGS Hessian approximation for convergence.
+Defect constraints use velocity-error form scaled by 1/h: `(X[k+1] - X[k])/h - f(X[k+1]) = 0` for better NLP conditioning.
 
 ### IPOPT Tuning
 
@@ -234,14 +264,52 @@ Configurable via `TrajectoryOptConfig`:
 | `ipopt_mu_strategy` | `'adaptive'` | Barrier update: `'adaptive'` or `'monotone'` |
 | `ipopt_hessian_approximation` | `'exact'` | `'exact'` or `'limited-memory'` (L-BFGS) |
 | `ipopt_warm_start` | `False` | Enable warm-start from previous solution |
+| `ipopt_nlp_scaling_max_gradient` | `100` | Max gradient for NLP scaling |
+| `mumps_pivtol` | `1e-4` | MUMPS pivoting tolerance for near-singular KKT |
+| `acceptable_tol` | `1e-3` | Acceptable convergence tolerance (early termination) |
+
+### Boundary Conditions
+
+Boundary conditions are enforced via penalty terms in the objective rather than hard equality constraints:
+
+```
+J += w_bc * ‖X[0] - x0_target‖²
+J += w_bc * ‖X[N] - xf_target‖²
+```
+
+The `solve()` method uses continuation on `w_bc` (100→1000→10000→100000→1e6), warm-starting each step from the previous solution. This avoids the NLP infeasibility that occurs with hard equality constraints when the initial guess is far from feasibility.
+
+Boundary target variables (`x0_target`, `xf_target`) are fixed decision variables (lb=ub=value) in the NLP, ensuring they remain constant across all solves.
+
+### Path Constraints
+
+| Constraint | Range | Description |
+|------------|-------|-------------|
+| Altitude h | [-20, 50] m | Prevents ground crash and excessive altitude |
+| Alpha α | [-60°, 120°] | Prevents extreme angles of attack |
+| Theta θ | [-π, 120°] | Allows full transition corridor |
 
 ### Convergence Strategy
 
 The optimizer uses several techniques to improve IPOPT convergence:
 
-1. **S-curve initial guess**: Cubic Hermite interpolation for theta, parabolic pitch rate, clamped throttle ramp
-2. **Relaxed us bounds**: `[-0.01, 0.01]` instead of `[0, 0]` to reduce tight-bound equality constraints
-3. **Two-stage solve**: Coarse mesh (N=20, 500 iter) → fine mesh warm-started via `resample_solution()`
+1. **Auto-trim boundary conditions**: `_find_trim()` computes equilibrium points in the optimizer dynamics, avoiding model mismatch between boundary conditions and dynamics
+2. **Penalty-based BCs with continuation**: Progressive enforcement avoids infeasibility from poor initial guesses
+3. **S-curve initial guess**: Cubic Hermite interpolation for theta, parabolic pitch rate, clamped throttle ramp
+4. **Velocity-error collocation**: Defect constraints scaled by 1/h measure velocity error (~O(1)) instead of position error (~O(h))
+5. **Normalized weights**: All objective weights are O(1) for better gradient scaling
+6. **Two-stage solve**: Coarse mesh (N=20, 500 iter) → fine mesh warm-started via `resample_solution()`
+
+### Known Limitations
+
+The induced velocity dynamics model creates stiff, nonlinear regions that make trajectory optimization very difficult:
+
+- IPOPT often converges to "Optimal Solution Found" but with boundary conditions partially unsatisfied
+- The optimizer may get stuck at intermediate flight states (e.g., V≈3.6 m/s, θ≈-6°) instead of reaching the hover target
+- The forward trim (V=20) has no level-flight equilibrium — only climbing flight (γ≈60°), making the transition to hover inherently difficult
+- Forward simulation from hover trim with constant controls can blow up to NaN, indicating stiff dynamics
+
+These issues are fundamental to the induced velocity dynamics model, not solver configuration problems.
 
 ## Trim Analysis
 

@@ -26,9 +26,16 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - **Trajectory IPOPT Tuning**: Added configurable `ipopt_mu_strategy`, `ipopt_hessian_approximation`, and `ipopt_warm_start` options to `TrajectoryOptConfig`
-- **Trajectory Collocation**: Made collocation degree configurable (`collocation_degree=1,2,3`); default remains d=1 (backward Euler)
+- **Trajectory Collocation**: Made collocation degree configurable (`collocation_degree=1,2,3`); default upgraded to d=2 (Radau) for better accuracy
 - **Trajectory Two-Stage Solve**: Added `solve_from_guess()` and `resample_solution()` methods for warm-starting; CLI now supports `--two-stage` flag (coarse N=20 → fine N=num-nodes)
-- **Trajectory CLI**: Added `--mu-strategy`, `--hessian`, and `--collocation-degree` arguments
+- **Trajectory CLI**: Added `--mu-strategy`, `--hessian`, `--collocation-degree`, and `--no-auto-trim` arguments
+- **Trajectory Boundary Conditions**: Replaced hard equality constraints with penalty-based approach (`w_bc * sumsqr`) to avoid NLP infeasibility; continuation on w_bc (100→1e6) for progressive enforcement
+- **Trajectory Objective Weights**: Normalized weights to O(1) for better NLP conditioning (was O(10⁴), now O(0.1))
+- **Trajectory IPOPT Options**: Added `nlp_scaling_max_gradient=100`, MUMPS pivoting (`mumps_pivtol=1e-4`), `least_square_init_primal`, `acceptable_tol`, `bound_push/bound_frac`
+- **Trajectory Trim Solver**: Added auto-trim mode (`auto_trim=True`) that computes boundary conditions from optimizer dynamics using `_find_trim()` with grid search over initial guesses
+- **Trajectory Path Constraints**: Added alpha bounds (`-60°≤α≤120°`), theta upper bound (`θ≤120°`), tightened altitude bounds (`-20m≤h≤50m`)
+- **Trajectory Initial Guess**: Improved S-curve interpolation for theta and pitch rate; added interior collocation state (Z) initial guess for d≥2
+- **Trajectory Resample**: `resample_solution()` now supports `collocation_degree` parameter and generates Z state guesses for d≥2
 
 ## [0.1.0] - 2026-05-24
 
