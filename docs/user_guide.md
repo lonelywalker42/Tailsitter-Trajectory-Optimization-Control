@@ -335,18 +335,56 @@ Generates:
 - DF trajectory plot (3×3 subplot)
 - Comparison plot: both trajectories on the corridor feasibility map with pitch rate margin background
 
+### DF Trajectory Simulation
+
+Simulate trajectory tracking and analyze errors (replaces Simulink-based simulation):
+
+```bash
+# Simulate hover → forward flight transition
+python scripts/df_trajectory.py df-simulate --direction hover2forward
+
+# Simulate forward flight → hover transition
+python scripts/df_trajectory.py df-simulate --direction forward2hover
+
+# Custom timestep and initial altitude
+python scripts/df_trajectory.py df-simulate --direction hover2forward --dt 0.01 --h0 10.0
+```
+
+Output includes:
+- Error analysis tables (RMSE, max deviation, end-point error) for both proposed and baseline trajectories
+- Performance grading (excellent/good/fair/poor) matching MATLAB thresholds
+- 3×2 error analysis plots showing reference vs actual tracking for V, γ, θ, q, h, α
+- `.npz` file with all simulation data
+
 ### DF CLI Arguments
+
+**Global arguments** (apply to all subcommands):
 
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `--config` | `aero_cfg2` | Aero configuration name |
 | `--output-dir` | `results/df_trajectory` | Output directory |
+
+**df-optimize / df-compare arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
 | `--dv` | `1.0` | Velocity grid step [m/s] |
 | `--dgamma` | `1.0` | FPA grid step [deg] |
 | `--w-time` | `0.1` | Time cost weight |
 | `--w-energy` | `0.1` | Control energy weight |
 | `--w-safety` | `0.1` | Pitch rate safety margin weight |
 | `--margin-k` | `2.0` | Pitch rate margin proportionality coefficient |
+
+**df-simulate arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--direction` | `hover2forward` | Transition direction |
+| `--dt` | `0.02` | Simulation timestep [s] |
+| `--h0` | `0.0` | Initial altitude [m] |
+| `--acc` | `5.0` | Baseline assumed acceleration [m/s²] |
+| `--n-points` | `16` | Number of baseline control points |
 
 ### DF vs CasADi Comparison
 

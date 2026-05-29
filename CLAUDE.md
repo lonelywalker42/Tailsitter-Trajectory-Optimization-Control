@@ -62,6 +62,9 @@ python scripts/df_trajectory.py df-optimize --direction hover2forward
 # DF-based trajectory comparison (proposed vs baseline)
 python scripts/df_trajectory.py df-compare --direction hover2forward
 
+# DF-based trajectory tracking simulation + error analysis
+python scripts/df_trajectory.py df-simulate --direction hover2forward
+
 # Run tests
 python -m pytest tests/ -v
 
@@ -165,7 +168,8 @@ TailsitterControl/
 │   ├── df_trim.py             # DF-based corridor sweep
 │   ├── df_trajectory_optimization.py # DF trajectory optimizer
 │   ├── baseline_trajectory.py # Baseline corridor path optimization
-│   └── df_trajectory_plotting.py # DF trajectory visualization
+│   ├── df_trajectory_plotting.py # DF trajectory visualization
+│   └── df_trajectory_simulation.py # DF trajectory tracking simulation + error analysis
 └── tests/                     # Unit tests
     ├── test_env.py
     ├── test_normalization.py
@@ -194,7 +198,8 @@ TailsitterControl/
 - `df_trim.py` — DF-based corridor sweep over (V, gamma) grid (refactored from `matlab/analysis/controller/df_trim.m`)
 - `df_trajectory_optimization.py` — DF trajectory optimizer using scipy.optimize with (dt, dgamma) decision variables (refactored from `matlab/analysis/controller/trajectory_plan.m`)
 - `baseline_trajectory.py` — Baseline corridor path optimization maximizing distance from boundary (refactored from `matlab/analysis/controller/trajectory_compare.m`)
-- `df_trajectory_plotting.py` — DF trajectory, corridor, and comparison visualization (refactored from `matlab/analysis/controller/visualize_*.m`)
+- `df_trajectory_plotting.py` — DF trajectory, corridor, comparison, and error visualization (refactored from `matlab/analysis/controller/visualize_*.m`)
+- `df_trajectory_simulation.py` — Open-loop trajectory tracking simulation + RMSE error analysis (refactored from `matlab/analysis/controller/sim_main.m`, `transition_sim_compare.m`)
 
 ### State Space
 

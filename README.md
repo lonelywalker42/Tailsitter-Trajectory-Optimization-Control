@@ -27,7 +27,7 @@
 - **配平分析**：稳态配平求解、过渡走廊扫描、线性化与特征值分析
 - **轨迹优化**：CasADi + IPOPT 直接配点法求解最优过渡轨迹
 - **微分平坦轨迹优化**：基于微分平坦的 (V, γ) 空间轨迹优化，替代 CasADi 高维方法
-- **完整测试**：65 个单元测试覆盖全部核心功能
+- **完整测试**：84 个单元测试覆盖全部核心功能
 
 ### 快速开始
 
@@ -113,6 +113,9 @@ python scripts/df_trajectory.py df-optimize --direction hover2forward
 
 # DF 轨迹对比（优化方法 vs 基线方法）
 python scripts/df_trajectory.py df-compare --direction hover2forward
+
+# DF 轨迹跟踪仿真 + 误差分析
+python scripts/df_trajectory.py df-simulate --direction hover2forward
 ```
 
 #### 运行测试
@@ -167,7 +170,8 @@ TailsitterControl/
 │   ├── df_trim.py             # 微分平坦走廊扫描
 │   ├── df_trajectory_optimization.py # 微分平坦轨迹优化器
 │   ├── baseline_trajectory.py # 基线走廊路径优化
-│   └── df_trajectory_plotting.py # 微分平坦轨迹可视化
+│   ├── df_trajectory_plotting.py # 微分平坦轨迹可视化
+│   └── df_trajectory_simulation.py # 微分平坦轨迹跟踪仿真 + 误差分析
 └── tests/                     # 单元测试
 ```
 
@@ -221,7 +225,7 @@ This project uses reinforcement learning (SAC/PPO) to train agents that control 
 - **Trim Analysis**: Steady-state trim solvers, transition corridor sweep, linearization and eigenvalue analysis
 - **Trajectory Optimization**: CasADi + IPOPT direct collocation for optimal transition trajectories
 - **DF Trajectory Optimization**: Differential-flatness-based trajectory optimization in (V, γ) space, alternative to CasADi high-dimensional approach
-- **Comprehensive Testing**: 65 unit tests covering all core functionality
+- **Comprehensive Testing**: 84 unit tests covering all core functionality
 
 ### Quick Start
 
@@ -307,6 +311,9 @@ python scripts/df_trajectory.py df-optimize --direction hover2forward
 
 # DF trajectory comparison (proposed vs baseline)
 python scripts/df_trajectory.py df-compare --direction hover2forward
+
+# DF trajectory tracking simulation + error analysis
+python scripts/df_trajectory.py df-simulate --direction hover2forward
 ```
 
 #### Running Tests
@@ -361,7 +368,8 @@ TailsitterControl/
 │   ├── df_trim.py             # DF-based corridor sweep
 │   ├── df_trajectory_optimization.py # DF trajectory optimizer
 │   ├── baseline_trajectory.py # Baseline corridor path optimization
-│   └── df_trajectory_plotting.py # DF trajectory visualization
+│   ├── df_trajectory_plotting.py # DF trajectory visualization
+│   └── df_trajectory_simulation.py # DF trajectory tracking simulation + error analysis
 └── tests/                     # Unit tests
 ```
 

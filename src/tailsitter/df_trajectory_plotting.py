@@ -20,6 +20,7 @@ from .plotting import _sci_style, COLORS
 from .df_trim import DFTrimMesh
 from .df_trajectory_optimization import DFTrajectoryResult
 from .baseline_trajectory import BaselineTrajectoryResult
+from .df_trajectory_simulation import SimulationResult, ErrorAnalysis
 from .trim import R2D
 
 
@@ -479,6 +480,82 @@ def plot_df_multiple_corridors(
 
         fig.tight_layout()
         path = save_dir / f"{filename}.png"
+        fig.savefig(path, bbox_inches="tight", dpi=300)
+        plt.close(fig)
+        saved.append(path)
+
+    return saved
+
+
+# ---------------------------------------------------------------------------
+# Tracking error visualization (3×2 subplot)
+# ---------------------------------------------------------------------------
+
+def plot_tracking_error(
+    sim: SimulationResult,
+    error: ErrorAnalysis,
+    save_dir: str | Path,
+    prefix: str = "",
+) -> list[Path]:
+    """Plot trajectory tracking error analysis (3x2 subplot).
+
+    Ported from matlab/analysis/controller/transition_sim_compare.m ::
+    visualize_error_analysis(). Shows reference vs actual with error fill
+    for V, gamma, theta, q, h, alpha.
+
+    Args:
+        sim: Simulation result
+        error: Error analysis result
+        save_dir: Directory to save plots
+        prefix: Filename prefix (e.g., "proposed" or "baseline")
+
+    Returns:
+        List of saved file paths
+    """
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    saved = []
+
+    t = sim.time
+
+    panels = [
+        ("V", r"Velocity $V$ (m/s)", sim.ref_V, sim.actual_V,
+         f"RMSE={error.rmse_V:.3f}", "(a) Velocity Tracking"),
+        ("gamma", r"FPA $\gamma$ ($^\circ$)", sim.ref_gamma, sim.actual_gamma,
+         f"RMSE={error.rmse_gamma:.3f}", "(b) Flight Path Angle Tracking"),
+        ("theta", r"Pitch $\theta$ ($^\circ$)", sim.ref_theta, sim.actual_theta,
+         f"RMSE={error.rmse_theta:.3f}", "(c) Pitch Angle Tracking"),
+        ("q", r"Pitch Rate $q$ ($^\circ$/s)", sim.ref_q, sim.actual_q,
+         f"RMSE={error.rmse_q:.3f}", "(d) Pitch Rate Tracking"),
+        ("h", r"Altitude $h$ (m)", sim.ref_h, sim.actual_h,
+         f"RMSE={error.rmse_height:.3f}", "(e) Altitude Tracking"),
+        ("alpha", r"AoA $\alpha$ ($^\circ$)", sim.ref_alpha, sim.actual_alpha,
+         f"RMSE={error.rmse_alpha:.3f}", "(f) Angle of Attack Tracking"),
+    ]
+
+    with _sci_style():
+        fig, axes = plt.subplots(3, 2, figsize=(14, 10), sharex=True)
+
+        for idx, (key, ylabel, ref, actual, rmse_str, title) in enumerate(panels):
+            ax = axes[idx // 2, idx % 2]
+            ax.plot(t, ref, "-", color=COLORS["blue"], linewidth=1.5, label="Reference")
+            ax.plot(t, actual, "--", color=COLORS["red"], linewidth=1.5, label="Actual")
+            ax.fill_between(t, ref, actual, alpha=0.2, color=COLORS["light_gray"],
+                           label="Error")
+            ax.set_ylabel(ylabel, fontsize=10)
+            ax.set_title(title, fontsize=11, fontweight="bold")
+            ax.legend(loc="best", fontsize=8, frameon=False)
+            ax.grid(True, alpha=0.3)
+            ax.text(0.98, 0.95, rmse_str, transform=ax.transAxes,
+                    fontsize=8, ha="right", va="top",
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="wheat", alpha=0.5))
+
+        for ax in axes[2, :]:
+            ax.set_xlabel(r"Time $t$ (s)", fontsize=10)
+
+        fig.tight_layout()
+        fname = f"{prefix}error_analysis.png" if prefix else "error_analysis.png"
+        path = save_dir / fname
         fig.savefig(path, bbox_inches="tight", dpi=300)
         plt.close(fig)
         saved.append(path)

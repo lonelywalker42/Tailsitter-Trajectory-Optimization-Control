@@ -80,7 +80,7 @@ Use semantic commit messages:
 - [x] Trajectory optimization tests (26 tests)
 - [x] Differential flatness tests (15 tests)
 - [x] DF trim tests (8 tests)
-- [x] All tests passing (65/65)
+- [x] All tests passing (84/84)
 
 ### Phase 7: Trajectory Optimization ✓
 
@@ -107,6 +107,14 @@ Use semantic commit messages:
 - [x] Write unit tests for differential flatness (sin4, DF transfer, pitch rate margin)
 - [x] Write unit tests for DF trim (sweep, shapes, feasibility, save/load)
 - [x] Fix `gammadddot` typo in DF transfer second-order system
+- [x] Update CLAUDE.md, CHANGELOG.md, and all documentation
+
+### Phase 9: Trajectory Tracking Simulation ✓
+
+- [x] Implement `df_trajectory_simulation.py` — open-loop simulation + RMSE error analysis
+- [x] Add `plot_tracking_error()` to `df_trajectory_plotting.py` — 3×2 error visualization
+- [x] Add `df-simulate` subcommand to `scripts/df_trajectory.py`
+- [x] Write unit tests for simulation (error analysis, grading, thrust conversion)
 - [x] Update CLAUDE.md, CHANGELOG.md, and all documentation
 
 ## Running Tests

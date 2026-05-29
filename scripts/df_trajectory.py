@@ -1,12 +1,14 @@
 """DF-based trajectory optimization script for tailsitter UAV transitions.
 
-Replaces matlab/analysis/controller/trajectory_compare.m, Main.m, df_trim.m.
+Replaces matlab/analysis/controller/trajectory_compare.m, Main.m, df_trim.m,
+sim_main.m, sim_main_baseline.m, sim_compare.m, transition_sim_compare.m.
 
 Usage:
     python scripts/df_trajectory.py df-trim
     python scripts/df_trajectory.py df-optimize --direction hover2forward
     python scripts/df_trajectory.py df-baseline
     python scripts/df_trajectory.py df-compare --direction hover2forward
+    python scripts/df_trajectory.py df-simulate --direction hover2forward
 """
 
 import argparse
@@ -31,7 +33,15 @@ from tailsitter.baseline_trajectory import (
 )
 from tailsitter.df_trajectory_plotting import (
     plot_df_trajectory, plot_df_corridor_suite, plot_df_trajectory_comparison,
+    plot_tracking_error,
 )
+from tailsitter.df_trajectory_simulation import (
+    simulate_df_trajectory, simulate_baseline_trajectory,
+    analyze_tracking_error, print_error_report,
+)
+from tailsitter.trim import load_aero_data as load_trim_aero_data
+from tailsitter.dynamics import LongitudinalDynamics
+from tailsitter.config import PhysicalConfig
 
 
 def cmd_df_trim(args):
@@ -253,6 +263,161 @@ def cmd_df_compare(args):
     print(f"{'='*50}")
 
 
+def _load_aero_dict(config_name: str, data_dir: str) -> dict:
+    """Load aero data as dict for LongitudinalDynamics."""
+    aero = load_trim_aero_data(config_name, data_dir)
+    from dataclasses import asdict
+    return asdict(aero)
+
+
+def _load_dynamics(config_name: str, data_dir: str) -> LongitudinalDynamics:
+    """Initialize dynamics model from config."""
+    phys = PhysicalConfig()
+    aero_dict = _load_aero_dict(config_name, data_dir)
+    return LongitudinalDynamics(phys, aero_dict)
+
+
+def cmd_df_simulate(args):
+    """Simulate trajectory tracking and analyze errors."""
+    print("=" * 50)
+    print("DF Trajectory Tracking Simulation")
+    print("=" * 50)
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Parse direction
+    if args.direction == "hover2forward":
+        vel = (0.1, 16.0)
+        gamma_deg = (90.0, 0.0)
+        start = (0.1, 90.0)
+        end = (16.0, 0.0)
+    elif args.direction == "forward2hover":
+        vel = (16.0, 0.1)
+        gamma_deg = (0.0, 90.0)
+        start = (16.0, 0.0)
+        end = (0.1, 90.0)
+    else:
+        vel = tuple(args.vel)
+        gamma_deg = tuple(args.gamma)
+        start = (vel[0], gamma_deg[0])
+        end = (vel[1], gamma_deg[1])
+
+    # Load dynamics model
+    print(f"\nLoading dynamics model (config={args.config})...")
+    dyn = _load_dynamics(args.config, args.data_dir)
+    aero_dict = _load_aero_dict(args.config, args.data_dir)
+
+    # Step 1: DF trajectory optimization (proposed)
+    print("\n--- Proposed trajectory (DF optimization) ---")
+    proposed = df_trajectory_optimize(
+        vel=vel,
+        gamma_deg=gamma_deg,
+        config_name=args.config,
+        data_dir=args.data_dir,
+        verbose=True,
+    )
+    save_df_trajectory_result(proposed, output_dir / f"df_traj_{args.direction}.npz")
+
+    # Step 2: Baseline path optimization
+    mesh_path = output_dir / f"df_trim_{args.config}.npz"
+    if mesh_path.exists():
+        print(f"\nLoading existing trim mesh from {mesh_path}")
+        mesh = load_df_trim_mesh(mesh_path)
+    else:
+        print("\nRunning DF trim sweep...")
+        mesh = df_trim_sweep(
+            config_name=args.config,
+            data_dir=args.data_dir,
+            verbose=True,
+        )
+        save_df_trim_mesh(mesh, mesh_path)
+
+    print("\n--- Baseline trajectory (corridor path) ---")
+    baseline = optimize_baseline_path(
+        df_trim_mesh=mesh,
+        start_point=start,
+        end_point=end,
+        n_control_points=args.n_points,
+        verbose=True,
+    )
+    save_baseline_result(baseline, output_dir / f"baseline_path_{args.direction}.npz")
+
+    # Step 3: Simulate proposed trajectory
+    print("\n--- Simulating proposed trajectory ---")
+    sim_proposed = simulate_df_trajectory(
+        proposed, dyn, aero_dict, dt=args.dt, h0=args.h0,
+    )
+    error_proposed = analyze_tracking_error(sim_proposed)
+    print_error_report(error_proposed, "Proposed")
+
+    # Step 4: Simulate baseline trajectory
+    print("\n--- Simulating baseline trajectory ---")
+    sim_baseline = simulate_baseline_trajectory(
+        baseline, dyn, aero_dict, dt=args.dt, acc=args.acc, h0=args.h0,
+    )
+    error_baseline = analyze_tracking_error(sim_baseline)
+    print_error_report(error_baseline, "Baseline")
+
+    # Step 5: Generate error plots
+    print("\n--- Generating error analysis plots ---")
+    saved_plots = plot_tracking_error(sim_proposed, error_proposed, output_dir, prefix="proposed_")
+    for p in saved_plots:
+        print(f"Plot saved to {p}")
+
+    saved_plots = plot_tracking_error(sim_baseline, error_baseline, output_dir, prefix="baseline_")
+    for p in saved_plots:
+        print(f"Plot saved to {p}")
+
+    # Step 6: Save simulation data
+    np.savez(
+        output_dir / f"sim_{args.direction}.npz",
+        # Proposed
+        proposed_time=sim_proposed.time,
+        proposed_actual_V=sim_proposed.actual_V,
+        proposed_actual_gamma=sim_proposed.actual_gamma,
+        proposed_actual_theta=sim_proposed.actual_theta,
+        proposed_actual_q=sim_proposed.actual_q,
+        proposed_actual_alpha=sim_proposed.actual_alpha,
+        proposed_actual_h=sim_proposed.actual_h,
+        proposed_ref_V=sim_proposed.ref_V,
+        proposed_ref_gamma=sim_proposed.ref_gamma,
+        proposed_ref_theta=sim_proposed.ref_theta,
+        proposed_ref_q=sim_proposed.ref_q,
+        proposed_ref_alpha=sim_proposed.ref_alpha,
+        proposed_ref_h=sim_proposed.ref_h,
+        # Baseline
+        baseline_time=sim_baseline.time,
+        baseline_actual_V=sim_baseline.actual_V,
+        baseline_actual_gamma=sim_baseline.actual_gamma,
+        baseline_actual_theta=sim_baseline.actual_theta,
+        baseline_actual_q=sim_baseline.actual_q,
+        baseline_actual_alpha=sim_baseline.actual_alpha,
+        baseline_actual_h=sim_baseline.actual_h,
+        baseline_ref_V=sim_baseline.ref_V,
+        baseline_ref_gamma=sim_baseline.ref_gamma,
+        baseline_ref_theta=sim_baseline.ref_theta,
+        baseline_ref_q=sim_baseline.ref_q,
+        baseline_ref_alpha=sim_baseline.ref_alpha,
+        baseline_ref_h=sim_baseline.ref_h,
+    )
+    print(f"\nSimulation data saved to {output_dir / f'sim_{args.direction}.npz'}")
+
+    # Summary
+    print(f"\n{'='*50}")
+    print("Summary")
+    print(f"{'='*50}")
+    print(f"{'Channel':<15} {'Proposed RMSE':>15} {'Baseline RMSE':>15}")
+    print("-" * 45)
+    print(f"{'V [m/s]':<15} {error_proposed.rmse_V:>15.4f} {error_baseline.rmse_V:>15.4f}")
+    print(f"{'gamma [deg]':<15} {error_proposed.rmse_gamma:>15.4f} {error_baseline.rmse_gamma:>15.4f}")
+    print(f"{'theta [deg]':<15} {error_proposed.rmse_theta:>15.4f} {error_baseline.rmse_theta:>15.4f}")
+    print(f"{'q [deg/s]':<15} {error_proposed.rmse_q:>15.4f} {error_baseline.rmse_q:>15.4f}")
+    print(f"{'alpha [deg]':<15} {error_proposed.rmse_alpha:>15.4f} {error_baseline.rmse_alpha:>15.4f}")
+    print(f"{'h [m]':<15} {error_proposed.rmse_height:>15.4f} {error_baseline.rmse_height:>15.4f}")
+    print(f"{'='*50}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="DF-based trajectory optimization for tailsitter UAV")
@@ -326,6 +491,27 @@ def main():
     p_cmp.add_argument("--recompute", action="store_true",
                         help="Force recomputation of trim mesh")
 
+    # df-simulate subcommand
+    p_sim = subparsers.add_parser("df-simulate",
+                                   help="Simulate trajectory tracking and analyze errors")
+    p_sim.add_argument("--direction", type=str, default="hover2forward",
+                       choices=["hover2forward", "forward2hover", "custom"],
+                       help="Transition direction")
+    p_sim.add_argument("--vel", type=float, nargs=2, default=[0.1, 16.0],
+                       metavar=("V_START", "V_END"),
+                       help="Velocity range [m/s] (for custom direction)")
+    p_sim.add_argument("--gamma", type=float, nargs=2, default=[90.0, 0.0],
+                       metavar=("GAMMA_START", "GAMMA_END"),
+                       help="FPA range [deg] (for custom direction)")
+    p_sim.add_argument("--dt", type=float, default=0.02,
+                       help="Simulation timestep [s] (default: 0.02)")
+    p_sim.add_argument("--h0", type=float, default=0.0,
+                       help="Initial altitude [m] (default: 0.0)")
+    p_sim.add_argument("--acc", type=float, default=5.0,
+                       help="Baseline assumed acceleration [m/s^2] (default: 5.0)")
+    p_sim.add_argument("--n-points", type=int, default=16,
+                       help="Number of baseline control points")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -340,6 +526,8 @@ def main():
         cmd_df_baseline(args)
     elif args.command == "df-compare":
         cmd_df_compare(args)
+    elif args.command == "df-simulate":
+        cmd_df_simulate(args)
 
 
 if __name__ == "__main__":

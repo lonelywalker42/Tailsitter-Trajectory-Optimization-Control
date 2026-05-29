@@ -23,6 +23,10 @@ All notable changes to this project will be documented in this file.
 - **DF Trajectory Plotting**: `src/tailsitter/df_trajectory_plotting.py` — DF trajectory (3x3 subplot), corridor heatmaps, simulation comparison, trajectory comparison on corridor, and multi-corridor 3D surface visualization. Refactored from `matlab/analysis/controller/visualize_*.m`
 - **DF Trajectory CLI**: `scripts/df_trajectory.py` — command-line entry point with `df-trim`, `df-optimize`, `df-baseline`, and `df-compare` subcommands
 - **DF Tests**: `tests/test_differential_flatness.py` and `tests/test_df_trim.py` — 23 unit tests covering sin4 fitting/evaluation, DF transfer at various flight conditions, pitch rate margin, corridor sweep, and save/load round-trip
+- **DF Trajectory Simulation**: `src/tailsitter/df_trajectory_simulation.py` — open-loop trajectory tracking simulation using dynamics model + RMSE error analysis with performance grading. Replaces Simulink-dependent `sim_main.m`, `sim_main_baseline.m`, `transition_sim_compare.m`
+- **Error Visualization**: `plot_tracking_error()` in `df_trajectory_plotting.py` — 3x2 subplot showing reference vs actual tracking for V, γ, θ, q, h, α with error fill and RMSE annotations
+- **DF Simulate CLI**: `df-simulate` subcommand in `scripts/df_trajectory.py` — runs both proposed and baseline trajectory simulation, error analysis, and generates comparison plots
+- **Simulation Tests**: `tests/test_df_trajectory_simulation.py` — 19 unit tests covering error analysis, performance grading, and thrust-to-throttle conversion
 
 ### Fixed
 

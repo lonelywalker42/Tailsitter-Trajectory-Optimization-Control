@@ -401,6 +401,42 @@ Where:
 | Convergence | Sensitive to initial guess | More robust (lower dimensional) |
 | Speed | Slower (large NLP) | Faster (small NLP) |
 
+## Trajectory Tracking Simulation
+
+The simulation module (`df_trajectory_simulation.py`) evaluates how well the aircraft follows DF-optimized reference trajectories by running open-loop simulation through the nonlinear dynamics model. Replaces the Simulink-dependent scripts (`sim_main.m`, `sim_main_baseline.m`, `transition_sim_compare.m`).
+
+### Design
+
+- **Approach**: Open-loop feedforward — reference controls (throttle, elevator) from DF trajectory are applied directly to the dynamics model at each timestep
+- **Dynamics**: `LongitudinalDynamics.step()` with RK4 integration (same model as RL environment)
+- **Thrust conversion**: DF trajectory gives thrust in Newtons; converted to throttle [0,1] via inverse lookup: `throttle = interp(T/G, thrust_arr, thr_arr)`
+- **Time resampling**: DF trajectory has non-uniform time spacing; resampled to uniform `dt` grid via `np.interp`
+- **Baseline**: Time computed from constant acceleration assumption: `dt_i = |V_i - V_{i-1}| / acc`
+
+### Error Analysis
+
+The `analyze_tracking_error()` function computes metrics matching MATLAB `transition_sim_compare.m`:
+
+| Metric | Description |
+|--------|-------------|
+| RMSE | Root mean square error for V, γ, θ, q, α, h |
+| Max deviation | Maximum absolute error for each channel |
+| End-point error | Final actual - final reference |
+| Performance grade | excellent / good / fair / poor based on RMSE thresholds |
+
+**Grading thresholds** (matching MATLAB):
+
+| Channel | Excellent | Good | Fair | Poor |
+|---------|-----------|------|------|------|
+| V [m/s] | < 0.5 | < 1.0 | < 2.0 | ≥ 2.0 |
+| γ [deg] | < 0.5 | < 1.0 | < 2.0 | ≥ 2.0 |
+| θ [deg] | < 1.0 | < 2.0 | < 3.0 | ≥ 3.0 |
+| q [deg/s] | < 2.0 | < 5.0 | < 10.0 | ≥ 10.0 |
+
+### Visualization
+
+`plot_tracking_error()` generates a 3×2 subplot grid showing reference vs actual with error fill for each tracking channel, matching MATLAB `visualize_error_analysis()`.
+
 ## Trim Analysis
 
 The trim module (`trim.py`) finds equilibrium points across the flight envelope by solving force/moment balance equations. Refactored from `matlab/trim/`.
